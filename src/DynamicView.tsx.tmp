@@ -1,0 +1,152 @@
+
+// ── 动态工作流视图组件 ──────────────────────────────────────────────────
+const DynamicWorkflowView = () => {
+  const { token, workflows, selectedWorkflowId } = useStore();
+  const currentWorkflow = workflows.find(w => w.id === selectedWorkflowId);
+  
+  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [resultImages, setResultImages] = useState<string[]>([]);
+  const [currentJobId, setCurrentJobId] = useState<number | null>(null);
+  const currentJob = useStore(state => state.jobs.find(j => j.id === currentJobId));
+
+  // 1. 当切换工作流时，初始化表单默认值
+  useEffect(() => {
+    if (currentWorkflow?.parameter_schema) {
+      const defaults: Record<string, any> = {};
+      currentWorkflow.parameter_schema.forEach(param => {
+        defaults[param.field] = param.default ?? "";
+      });
+      setFormData(defaults);
+      setResultImages([]); setProgress(0); setCurrentJobId(null);
+    }
+  }, [selectedWorkflowId]);
+
+  // 2. 监听任务进度更新 (通过 WebSocket 触发 store 更新)
+  useEffect(() => {
+    if (!currentJob) return;
+    if (currentJob.status === 'succeeded') {
+      setGenerating(false); setProgress(100);
+      if (currentJob.assets) {
+        setResultImages(currentJob.assets.filter(a => a.type === 'output').map(a => a.url));
+      }
+    } else if (currentJob.status === 'failed') {
+      setGenerating(false); setProgress(0);
+      alert(`生成失败: ${currentJob.error_message || "未知错误"}`);
+    } else {
+      setProgress(currentJob.progress || 0);
+    }
+  }, [currentJob?.status, currentJob?.progress, currentJob?.assets]);
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleGenerate = async () => {
+    if (generating || !token || !currentWorkflow) return;
+    setGenerating(true); setProgress(0); setResultImages([]);
+
+    try {
+      // 检查是否有图片需要先上传到 Admin 暂存
+      const finalInputs = { ...formData };
+      for (const param of currentWorkflow.parameter_schema) {
+        if (param.type === 'image' && formData[param.field] instanceof File) {
+          const file = formData[param.field];
+          const arrayBuffer = await file.arrayBuffer();
+          // 调用 api.ts 中的上传接口
+          const uploadRes = await comfyUiProxy.uploadToAdmin(token, Array.from(new Uint8Array(arrayBuffer)), file.name, file.type);
+          finalInputs[param.field] = uploadRes.url; 
+        }
+      }
+
+      // 提交生成任务
+      const clientRequestId = `t_${Date.now()}`;
+      const job = await generationJobs.create(token, currentWorkflow.id, finalInputs, clientRequestId);
+      setCurrentJobId(job.job_id);
+      
+      // 在底层 store 中先占位
+      useStore.getState().updateJob(job.job_id, { id: job.job_id, status: job.status, progress: 0 } as any);
+    } catch (err: any) {
+      alert(`提交失败: ${err.message}`);
+      setGenerating(false);
+    }
+  };
+
+  if (!currentWorkflow) return <div className="loading-state"><Loader2 className="spinning" /> 加载中...</div>;
+
+  return (
+    <div className="workflow-container">
+      <div className="params-sidebar">
+        <div className="workflow-info">
+          <div className="category-label">{currentWorkflow.category_label}</div>
+          <h2>{currentWorkflow.name}</h2>
+          <p className="description">{currentWorkflow.description}</p>
+        </div>
+
+        <div className="dynamic-form-scroller">
+          {currentWorkflow.parameter_schema.map(param => (
+            <div key={param.field} className="param-item">
+              <label>{param.label}</label>
+              {param.type === 'textarea' ? (
+                <textarea 
+                  value={formData[param.field] || ""} 
+                  onChange={e => handleInputChange(param.field, e.target.value)}
+                  placeholder={`输入${param.label}...`}
+                />
+              ) : param.type === 'number' || param.type === 'integer' ? (
+                <div className="range-control">
+                  <input 
+                    type="range" 
+                    min={param.field === 'seed' ? 0 : 1} 
+                    max={param.field === 'seed' ? 1e16 : 2048} 
+                    value={formData[param.field] || 0}
+                    onChange={e => handleInputChange(param.field, Number(e.target.value))}
+                  />
+                  <input 
+                     type="number"
+                     value={formData[param.field] || 0}
+                     onChange={e => handleInputChange(param.field, Number(e.target.value))}
+                  />
+                </div>
+              ) : param.type === 'image' ? (
+                 <div className="file-uploader">
+                    <input type="file" onChange={e => handleInputChange(param.field, e.target.files?.[0])} />
+                 </div>
+              ) : (
+                <input 
+                  type="text" 
+                  value={formData[param.field] || ""} 
+                  onChange={e => handleInputChange(param.field, e.target.value)}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <button className="gen-button" disabled={generating} onClick={handleGenerate}>
+          {generating ? <Loader2 className="spinning" /> : <Zap fill="currentColor" size={18} />}
+          <span>{generating ? `创作中 ${progress}%` : "立即生成"}</span>
+        </button>
+      </div>
+
+      <div className="canvas-area">
+        {resultImages.length > 0 ? (
+          <div className="result-viewer">
+            <ImageViewer src={resultImages[0]} />
+          </div>
+        ) : generating ? (
+          <div className="gen-shimmer">
+             <div className="shimmer-anim" />
+             <p>灵感正在转化中...</p>
+          </div>
+        ) : (
+          <div className="empty-canvas">
+             <Sparkles size={48} strokeWidth={1} />
+             <p>从侧边栏选择一个灵感源泉，开始创作吧</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
