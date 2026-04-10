@@ -20,10 +20,22 @@ class WorkflowResolver
     public function resolve(WorkflowTemplate $template, array $inputs): array
     {
         $workflow = $template->definition_json;
-        $schema = $template->parameter_schema_json ?? [];
+        $schema = $this->normalizeSchema($template->parameter_schema_json ?? []);
 
         // 遍历参数schema，动态替换工作流中的值
-        foreach ($schema as $paramName => $config) {
+        foreach ($schema as $index => $config) {
+            $paramName = $config['field'] ?? null;
+            $inputKey = $this->resolveInputKey($config, $index);
+
+            if (!is_string($paramName) || $paramName === '') {
+                continue;
+            }
+
+            if (($config['type'] ?? null) === 'select' && $paramName === 'aspect_ratio') {
+                $this->applyAspectRatioPreset($workflow, $inputs, $config);
+                continue;
+            }
+
             if (!isset($config['node']) || !isset($config['field'])) {
                 continue;
             }
@@ -31,8 +43,10 @@ class WorkflowResolver
             $nodeId = $config['node'];
             $field = $config['field'];
 
-            // 获取输入值，优先使用用户提供的，否则使用默认值
-            $value = isset($inputs[$paramName]) ? $inputs[$paramName] : ($config['default'] ?? null);
+            // 获取输入值，优先使用唯一输入键，其次兼容旧的 field 键
+            $value = array_key_exists($inputKey, $inputs)
+                ? $inputs[$inputKey]
+                : (array_key_exists($paramName, $inputs) ? $inputs[$paramName] : ($config['default'] ?? null));
 
             if ($value !== null) {
                 // 类型转换逻辑
@@ -60,6 +74,100 @@ class WorkflowResolver
         }
 
         return $workflow;
+    }
+
+    private function resolveInputKey(array $config, int $index): string
+    {
+        $explicitKey = $config['input_key'] ?? null;
+        if (is_string($explicitKey) && $explicitKey !== '') {
+            return $explicitKey;
+        }
+
+        $field = $config['field'] ?? 'param';
+        $node = $config['node'] ?? null;
+
+        if (is_scalar($node) && $node !== '') {
+            return "{$field}__{$node}";
+        }
+
+        return is_string($field) && $field !== '' ? $field : "param__{$index}";
+    }
+
+    private function normalizeSchema(mixed $schema): array
+    {
+        if (is_string($schema) && $schema !== '') {
+            $decoded = json_decode($schema, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $this->normalizeSchema($decoded);
+            }
+
+            return [];
+        }
+
+        if (!is_array($schema)) {
+            return [];
+        }
+
+        if (isset($schema['nodes']) && is_array($schema['nodes'])) {
+            return array_values(array_filter($schema['nodes'], fn ($item) => is_array($item)));
+        }
+
+        if (array_is_list($schema)) {
+            return array_values(array_filter($schema, fn ($item) => is_array($item)));
+        }
+
+        $normalized = [];
+        foreach ($schema as $key => $config) {
+            if (!is_array($config)) {
+                continue;
+            }
+
+            if (!isset($config['input_key']) && is_string($key) && $key !== '') {
+                $config['input_key'] = $key;
+            }
+
+            if (!isset($config['field']) && is_string($key)) {
+                $config['field'] = $key;
+            }
+
+            $normalized[] = $config;
+        }
+
+        return $normalized;
+    }
+
+    private function applyAspectRatioPreset(array &$workflow, array $inputs, array $config): void
+    {
+        $selectedRatio = $inputs['aspect_ratio'] ?? ($config['default'] ?? null);
+        if (!$selectedRatio) {
+            return;
+        }
+
+        $preset = $config['presets'][$selectedRatio] ?? null;
+        $targets = $config['targets'] ?? [];
+
+        if (!$preset || !$targets) {
+            return;
+        }
+
+        foreach (['width', 'height'] as $dimension) {
+            $target = $targets[$dimension] ?? null;
+            $value = $preset[$dimension] ?? null;
+
+            if (!$target || $value === null) {
+                continue;
+            }
+
+            $nodeId = $target['node'] ?? null;
+            $field = $target['field'] ?? null;
+
+            if (!$nodeId || !$field) {
+                continue;
+            }
+
+            \Illuminate\Support\Facades\Log::debug("Applying aspect ratio preset: Node {$nodeId}, Field {$field} = {$value}");
+            $workflow[$nodeId]['inputs'][$field] = (int) $value;
+        }
     }
 
     /**

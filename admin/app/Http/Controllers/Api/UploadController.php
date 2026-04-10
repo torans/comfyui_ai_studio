@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\GenerationAsset;
+use App\Services\ComfyUi\ComfyUiClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +14,11 @@ use Illuminate\Support\Facades\Storage;
  */
 class UploadController extends Controller
 {
+    public function __construct(
+        private ComfyUiClient $comfyUiClient
+    ) {
+    }
+
     /**
      * 上传图片
      */
@@ -54,23 +59,69 @@ class UploadController extends Controller
             ], 500);
         }
 
-        // 创建生成资源记录
-        $asset = GenerationAsset::create([
-            'user_id' => $request->user()->id,
-            'generation_job_id' => null,
-            'type' => 'source',
-            'filename' => $file->getClientOriginalName(),
-            'storage_disk' => 'public',
-            'storage_path' => $storedPath,
-        ]);
-
         return response()->json([
-            'id' => $asset->id,
+            'id' => null,
             'url' => Storage::url($storedPath),
             'path' => $storedPath,
             'filename' => $file->getClientOriginalName(),
             'mime_type' => $file->getMimeType(),
             'size' => $file->getSize(),
+        ], 201);
+    }
+
+    /**
+     * 上传图片到 Admin 后直接桥接上传到 ComfyUI
+     */
+    public function comfyImage(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => [
+                'required',
+                'image',
+                'mimes:png,jpg,jpeg,gif,webp,bmp',
+                'max:20480',
+            ],
+        ]);
+
+        $file = $request->file('file');
+
+        $filename = sprintf(
+            '%s_%s.%s',
+            date('YmdHis'),
+            bin2hex(random_bytes(8)),
+            $file->getClientOriginalExtension()
+        );
+
+        $path = sprintf('uploads/%s/%s', date('Y/m'), $filename);
+
+        $storedPath = Storage::disk('public')->putFileAs(
+            dirname($path),
+            $file,
+            basename($path)
+        );
+
+        if (!$storedPath) {
+            return response()->json([
+                'message' => '文件上传失败',
+            ], 500);
+        }
+
+        $comfyUpload = $this->comfyUiClient->uploadImage($storedPath);
+        $inputValue = $comfyUpload['name'] ?? $comfyUpload['filename'] ?? basename($storedPath);
+
+        return response()->json([
+            'id' => null,
+            'url' => Storage::url($storedPath),
+            'path' => $storedPath,
+            'filename' => $file->getClientOriginalName(),
+            'mime_type' => $file->getMimeType(),
+            'size' => $file->getSize(),
+            'comfyui' => [
+                'name' => $comfyUpload['name'] ?? $inputValue,
+                'subfolder' => $comfyUpload['subfolder'] ?? '',
+                'type' => $comfyUpload['type'] ?? 'input',
+            ],
+            'input_value' => $inputValue,
         ], 201);
     }
 }

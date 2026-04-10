@@ -3,11 +3,13 @@
 namespace Tests\Feature\Jobs;
 
 use App\Jobs\DispatchGenerationJob;
+use App\Jobs\PollComfyUiJobStatus;
 use App\Models\GenerationJob;
 use App\Models\User;
 use App\Models\WorkflowTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class DispatchGenerationJobTest extends TestCase
@@ -16,6 +18,8 @@ class DispatchGenerationJobTest extends TestCase
 
     public function test_dispatch_job_queues_prompt_and_marks_job_running(): void
     {
+        Queue::fake();
+
         Http::fake([
             '*/prompt' => Http::response(['prompt_id' => 'prompt-123'], 200),
         ]);
@@ -44,5 +48,9 @@ class DispatchGenerationJobTest extends TestCase
             'status' => 'running',
             'comfy_prompt_id' => 'prompt-123',
         ]);
+
+        Queue::assertPushed(PollComfyUiJobStatus::class, function (PollComfyUiJobStatus $pollJob) use ($job) {
+            return $pollJob->jobId === $job->id;
+        });
     }
 }

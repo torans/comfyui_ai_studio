@@ -64,4 +64,49 @@ class GenerationAsset extends Model
     {
         return $query->where('type', $type);
     }
+
+    public function getResolvedUrlAttribute(): ?string
+    {
+        $remoteUrl = $this->metadata_json['remote_url'] ?? null;
+        if ($remoteUrl) {
+            return $remoteUrl;
+        }
+
+        if ($this->storage_path) {
+            return app('filesystem')->disk($this->storage_disk)->url($this->storage_path);
+        }
+
+        if (!$this->filename) {
+            return null;
+        }
+
+        $baseUrl = rtrim((string) config('services.comfyui.base_url'), '/');
+        if ($baseUrl === '') {
+            return null;
+        }
+
+        $params = http_build_query([
+            'filename' => $this->filename,
+            'subfolder' => $this->metadata_json['subfolder'] ?? '',
+            'type' => $this->metadata_json['comfy_type'] ?? 'output',
+        ]);
+
+        return "{$baseUrl}/view?{$params}";
+    }
+
+    public function getMediaKindAttribute(): string
+    {
+        $kind = $this->metadata_json['media_kind'] ?? null;
+        if (is_string($kind) && $kind !== '') {
+            return $kind;
+        }
+
+        $filename = strtolower((string) $this->filename);
+
+        if (str_ends_with($filename, '.mp4') || str_ends_with($filename, '.webm') || str_ends_with($filename, '.mov')) {
+            return 'video';
+        }
+
+        return 'image';
+    }
 }

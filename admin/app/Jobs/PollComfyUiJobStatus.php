@@ -6,6 +6,7 @@ use App\Events\GenerationJobStatusChanged;
 use App\Models\GenerationJob;
 use App\Services\ComfyUi\ComfyUiClient;
 use App\Services\ComfyUi\ErrorHandler;
+use App\Services\ComfyUi\WebSocketClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -32,58 +33,170 @@ class PollComfyUiJobStatus implements ShouldQueue
     /**
      * 任务超时时间
      * 增加超时时间，避免远程 ComfyUI 响应慢导致任务失败
+     * 注意：这个超时时间必须小于 queue:work 的 --timeout 参数
      */
-    public int $timeout = 300; // 增加到 5 分钟
+    public int $timeout = 55; // 保持低于 queue:work 默认 60 秒，避免开发环境被子进程超时杀掉
 
     public function __construct(
         public int $jobId
     ) {
     }
 
-    public function handle(ComfyUiClient $client, ErrorHandler $errorHandler): void
+    /**
+     * Execute the job.
+     */
+    public function handle(ComfyUiClient $client): void
     {
         $generationJob = GenerationJob::find($this->jobId);
-
-        if (! $generationJob) {
-            Log::error("Generation job not found: {$this->jobId}");
-            return;
-        }
-
-        // 检查任务是否应该继续轮询
-        if (!$this->shouldContinuePolling($generationJob)) {
+        if (!$generationJob || $generationJob->status === 'succeeded' || $generationJob->status === 'failed') {
             return;
         }
 
         $promptId = $generationJob->comfy_prompt_id;
-
-        if (empty($promptId)) {
-            Log::error("Generation job {$this->jobId} has no comfy_prompt_id");
-            $generationJob->markAsFailed('Missing prompt ID');
+        if (!$promptId) {
+            // 如果还没有 prompt_id，可能是初始提交阶段，释放并重试
+            $this->release(1);
             return;
         }
 
-        try {
-            // 使用带错误处理的请求
-            $history = $client->fetchHistory($promptId);
+        Log::info("Generation job {$this->jobId} starting WebSocket listener for prompt: {$promptId}");
 
-            // 检查任务是否完成
+        if (!$this->shouldUseWebSocket()) {
+            Log::info("任务 {$this->jobId} WebSocket 处于冷却期，直接使用轮询");
+            $this->performSinglePoll($client, $generationJob);
+            return;
+        }
+
+        $ws = new WebSocketClient(config('services.comfyui.base_url'));
+        if (!$ws->connect()) {
+            // 如果 WS 连不上，退回到原来的轮询逻辑（这部分逻辑我保留在原来的 handle 里，但现在首选 WS）
+            $this->temporarilyDisableWebSocket(120, 'connect_failed');
+            $this->performSinglePoll($client, $generationJob);
+            return;
+        }
+
+        $startTime = time();
+        $lastHistoryCheck = 0;
+        $lastProgressTime = $startTime;
+        $maxWsTime = 30; // WebSocket 最多监听30秒，然后回退到轮询
+
+        try {
+            while (time() - $startTime < $this->timeout) {
+                // 如果 WebSocket 监听超过30秒，回退到轮询模式
+                if (time() - $startTime > $maxWsTime) {
+                    Log::info("WebSocket 监听超时 ({$maxWsTime}秒)，回退到轮询模式");
+                    $this->temporarilyDisableWebSocket(120, 'listen_timeout');
+                    $ws->close();
+                    break;
+                }
+                
+                // 1. 读取 WebSocket 消息（非阻塞）
+                $msg = $ws->receive();
+                
+                if ($msg) {
+                    if (($msg['type'] ?? '') === 'progress' && ($msg['data']['prompt_id'] ?? '') === $promptId) {
+                        $value = $msg['data']['value'] ?? 0;
+                        $max = $msg['data']['max'] ?? 100;
+                        $progress = $max > 0 ? floor(($value / $max) * 100) : 0;
+                        
+                        Log::debug("WS Progress for job {$this->jobId}: {$progress}%");
+                        event(new GenerationJobStatusChanged($generationJob, $progress, "正在生成 ({$progress}%)"));
+                        $lastProgressTime = time();
+                    }
+                }
+
+                // 2. 每隔几秒强制检查一次 History，防止遗漏
+                if (time() - $lastHistoryCheck >= 5) { // 从2秒增加到5秒，减少请求频率
+                    try {
+                        $history = $client->fetchHistory($promptId);
+                        if (isset($history[$promptId])) {
+                            $this->handleJobCompletion($generationJob, $history[$promptId]);
+                            $ws->close();
+                            return;
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning("检查历史记录失败: " . $e->getMessage());
+                    }
+                    $lastHistoryCheck = time();
+                }
+
+                // 3. 如果超过10秒没有进度更新，检查队列状态
+                if (time() - $lastProgressTime > 10) {
+                    try {
+                        $queueStatus = $this->isJobInQueue($client, $promptId);
+                        if ($queueStatus === false) {
+                            Log::warning("任务 {$promptId} 从队列中消失");
+                            $this->handleJobDisappeared($generationJob);
+                            $ws->close();
+                            return;
+                        }
+                    } catch (\Exception $e) {
+                        // 队列检查失败，继续监听
+                        Log::debug("队列检查失败: " . $e->getMessage());
+                    }
+                }
+
+                // 小睡一会儿，避免 CPU 占用过高
+                usleep(100000); // 100ms
+            }
+        } catch (\Exception $e) {
+            Log::error("WS Listener error for job {$this->jobId}: " . $e->getMessage());
+            $this->temporarilyDisableWebSocket(180, 'listener_exception');
+        } finally {
+            $ws->close();
+        }
+
+        // WebSocket 监听结束，回退到传统的轮询模式
+        Log::info("任务 {$this->jobId} 回退到轮询模式");
+        $this->performSinglePoll($client, $generationJob);
+    }
+
+    private function shouldUseWebSocket(): bool
+    {
+        return !Cache::has($this->webSocketCooldownKey());
+    }
+
+    private function temporarilyDisableWebSocket(int $seconds, string $reason): void
+    {
+        Cache::put($this->webSocketCooldownKey(), [
+            'reason' => $reason,
+            'disabled_at' => now()->toISOString(),
+        ], now()->addSeconds($seconds));
+
+        Log::warning("任务 {$this->jobId} 暂停 WebSocket {$seconds} 秒", [
+            'reason' => $reason,
+        ]);
+    }
+
+    private function webSocketCooldownKey(): string
+    {
+        return "poll_ws_disabled_{$this->jobId}";
+    }
+
+    /**
+     * 原有的单次轮询逻辑，作为备选
+     */
+    private function performSinglePoll(ComfyUiClient $client, GenerationJob $generationJob): void
+    {
+        $promptId = $generationJob->comfy_prompt_id;
+        
+        try {
+            $history = $client->fetchHistory($promptId);
             if (isset($history[$promptId])) {
                 $this->handleJobCompletion($generationJob, $history[$promptId]);
                 return;
             }
 
-            // 检查任务是否在队列中
-            if (!$this->isJobInQueue($client, $promptId)) {
+            $queueStatus = $this->isJobInQueue($client, $promptId);
+            if ($queueStatus === false) {
                 $this->handleJobDisappeared($generationJob);
                 return;
             }
 
-            // 任务仍在运行，更新进度并继续轮询
             $this->updateJobProgress($generationJob);
-            $this->scheduleNextPoll();
-
+            $this->release(1);
         } catch (\Exception $e) {
-            $this->handlePollingException($e, $generationJob, $errorHandler);
+            $this->handlePollingError($e);
         }
     }
 
@@ -132,46 +245,45 @@ class PollComfyUiJobStatus implements ShouldQueue
                      (isset($status['status']['status_str']) && $status['status']['status_str'] === 'success');
 
         if ($isSuccess) {
-            // 2. 参考 Python 示例思路：提取所有图片输出
+            // 2. 提取所有图片/视频输出
             $assets = [];
             $baseUrl = config('services.comfyui.base_url');
             
             if (isset($status['outputs'])) {
                 foreach ($status['outputs'] as $nodeId => $nodeOutput) {
-                    if (isset($nodeOutput['images'])) {
-                        foreach ($nodeOutput['images'] as $img) {
-                            // 拼接 ComfyUI 的 /view 接口地址
-                            $params = http_build_query([
-                                'filename' => $img['filename'],
-                                'subfolder' => $img['subfolder'] ?? '',
-                                'type' => $img['type'] ?? 'output'
-                            ]);
-                            $imageUrl = "{$baseUrl}/view?{$params}";
-                            
-                            // 保存到资产表 (assets 关系)
-                            $assets[] = $job->assets()->create([
-                                'type' => 'output',
-                                'url' => $imageUrl,
-                                'filename' => $img['filename'],
-                                'metadata_json' => [
-                                    'node_id' => $nodeId,
-                                    'subfolder' => $img['subfolder'] ?? '',
-                                    'comfy_type' => $img['type'] ?? 'output'
-                                ]
-                            ]);
-                        }
+                    foreach ($this->extractOutputFiles($nodeOutput) as $file) {
+                        $params = http_build_query([
+                            'filename' => $file['filename'],
+                            'subfolder' => $file['subfolder'] ?? '',
+                            'type' => $file['type'] ?? 'output'
+                        ]);
+                        $remoteUrl = "{$baseUrl}/view?{$params}";
+
+                        $assets[] = $job->assets()->create([
+                            'type' => 'output',
+                            'user_id' => $job->user_id,
+                            'filename' => $file['filename'],
+                            'metadata_json' => [
+                                'node_id' => $nodeId,
+                                'remote_url' => $remoteUrl,
+                                'subfolder' => $file['subfolder'] ?? '',
+                                'comfy_type' => $file['type'] ?? 'output',
+                                'media_kind' => $file['media_kind'],
+                                'source_bucket' => $file['source_bucket'] ?? null,
+                            ]
+                        ]);
                     }
                 }
             }
 
             // 3. 更新任务状态
             $job->markAsSucceeded();
-            Log::info("Generation job {$job->id} completed with " . count($assets) . " images");
+            Log::info("Generation job {$job->id} completed with " . count($assets) . " assets");
 
             $job->events()->create([
                 'status' => 'completed',
                 'progress' => 100,
-                'message' => '任务执行完成，生成了 ' . count($assets) . ' 张图片',
+                'message' => '任务执行完成，生成了 ' . count($assets) . ' 个结果',
             ]);
 
             // 4. 发送广播（确保加载了最新的 assets 关系，这样前端才能立刻拿到 URL）
@@ -179,6 +291,7 @@ class PollComfyUiJobStatus implements ShouldQueue
             event(new GenerationJobStatusChanged($job, 100, '完成'));
             
             Cache::forget("polling_errors_{$job->id}");
+            Cache::forget("queue_disappeared_{$job->id}");
             return;
         }
 
@@ -201,6 +314,7 @@ class PollComfyUiJobStatus implements ShouldQueue
             
             // 清除错误计数
             Cache::forget("polling_errors_{$job->id}");
+            Cache::forget("queue_disappeared_{$job->id}");
             return;
         }
     }
@@ -208,7 +322,7 @@ class PollComfyUiJobStatus implements ShouldQueue
     /**
      * 检查任务是否在队列中
      */
-    private function isJobInQueue(ComfyUiClient $client, string $promptId): bool
+    private function isJobInQueue(ComfyUiClient $client, string $promptId): ?bool
     {
         try {
             $queue = $client->fetchQueue();
@@ -225,10 +339,41 @@ class PollComfyUiJobStatus implements ShouldQueue
             
             return false;
         } catch (\Exception $e) {
-            // 获取队列失败，假设任务还在队列中
-            Log::warning("Failed to fetch queue, assuming job is still in queue: " . $e->getMessage());
-            return true;
+            // 获取队列失败时返回未知状态，让上层继续依赖 history 和下一轮轮询。
+            Log::warning("Failed to fetch queue, queue status is unknown: " . $e->getMessage());
+            return null;
         }
+    }
+
+    /**
+     * @return array<int, array{filename:string, subfolder?:string, type?:string, media_kind:string, source_bucket?:string}>
+     */
+    private function extractOutputFiles(array $nodeOutput): array
+    {
+        $files = [];
+
+        foreach (['images', 'gifs', 'videos'] as $bucket) {
+            $items = $nodeOutput[$bucket] ?? null;
+            if (!is_array($items)) {
+                continue;
+            }
+
+            foreach ($items as $item) {
+                if (!is_array($item) || !isset($item['filename']) || !is_string($item['filename'])) {
+                    continue;
+                }
+
+                $files[] = [
+                    'filename' => $item['filename'],
+                    'subfolder' => $item['subfolder'] ?? '',
+                    'type' => $item['type'] ?? 'output',
+                    'media_kind' => $bucket === 'images' ? 'image' : 'video',
+                    'source_bucket' => $bucket,
+                ];
+            }
+        }
+
+        return $files;
     }
 
     /**
@@ -236,6 +381,17 @@ class PollComfyUiJobStatus implements ShouldQueue
      */
     private function handleJobDisappeared(GenerationJob $job): void
     {
+        $missKey = "queue_disappeared_{$job->id}";
+        $missCount = Cache::increment($missKey);
+        Cache::put($missKey, $missCount, now()->addMinutes(10));
+
+        // history 和 queue 之间存在短暂延迟，连续多次确认消失后再判失败。
+        if ($missCount < 3) {
+            Log::warning("Generation job {$job->id} missing from queue/history check ({$missCount}/3), will retry");
+            $this->release(3);
+            return;
+        }
+
         $errorMsg = '任务在 ComfyUI 中异常中断或未被记录';
         $job->markAsFailed($errorMsg);
         Log::warning("Generation job {$job->id} disappeared from ComfyUI queue and history");
@@ -250,6 +406,7 @@ class PollComfyUiJobStatus implements ShouldQueue
         
         // 清除错误计数
         Cache::forget("polling_errors_{$job->id}");
+        Cache::forget($missKey);
     }
 
     /**

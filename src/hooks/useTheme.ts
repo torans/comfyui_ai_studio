@@ -9,6 +9,10 @@ export function useTheme() {
 
   // 检测系统主题变化
   useEffect(() => {
+    if (typeof window.matchMedia !== 'function') {
+      return;
+    }
+
     const updateSystemTheme = () => {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       setSystemTheme(isDark ? 'dark' : 'light');

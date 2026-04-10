@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { GenerationJob, WorkflowTemplate, ParameterSchema } from './api';
 
 type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -7,50 +8,6 @@ interface User {
   name: string;
   email: string;
   role: string;
-}
-
-export interface GenerationJob {
-  id: number;
-  type: string;
-  status: string;
-  workflow_template_id: number;
-  workflow_code?: string;
-  workflow_name?: string;
-  input_json?: Record<string, unknown>;
-  error_message?: string;
-  started_at?: string;
-  finished_at?: string;
-  created_at?: string;
-  updated_at?: string;
-  progress?: number;
-  message?: string;
-  assets?: Array<{
-    id: number;
-    type: string;
-    filename: string;
-    url: string;
-  }>;
-}
-
-interface ParameterSchema {
-  node: string;
-  field: string;
-  label: string;
-  type: string;
-  default?: unknown;
-  required?: boolean;
-  options?: Record<string, string>;
-}
-
-interface WorkflowTemplate {
-  id: number;
-  name: string;
-  code: string;
-  type: string;
-  category: string;
-  category_label: string;
-  description?: string;
-  parameter_schema: ParameterSchema[];
 }
 
 interface AppState {
@@ -101,10 +58,12 @@ interface AppState {
   updateJob: (jobId: number, updates: Partial<GenerationJob>) => void;
 }
 
+const storage = typeof window !== 'undefined' ? window.localStorage : null;
+
 // 从 localStorage 恢复状态
-const storedToken = localStorage.getItem('auth_token');
-const storedUser = localStorage.getItem('auth_user');
-const storedTheme = localStorage.getItem('app_theme') as ThemeMode || 'auto';
+const storedToken = storage?.getItem('auth_token') ?? null;
+const storedUser = storage?.getItem('auth_user') ?? null;
+const storedTheme = (storage?.getItem('app_theme') as ThemeMode | null) ?? 'auto';
 
 export const useStore = create<AppState>((set) => ({
   // Auth state

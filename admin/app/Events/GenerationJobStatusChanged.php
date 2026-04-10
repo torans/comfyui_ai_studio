@@ -55,8 +55,9 @@ class GenerationJobStatusChanged implements ShouldBroadcast
                 return [
                     'id' => $asset->id,
                     'type' => $asset->type,
+                    'media_kind' => $asset->media_kind,
                     'filename' => $asset->filename,
-                    'url' => app('filesystem')->disk($asset->storage_disk)->url($asset->storage_path),
+                    'url' => $asset->resolved_url,
                 ];
             });
         }

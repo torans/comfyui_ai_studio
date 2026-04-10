@@ -47,12 +47,13 @@ class WorkflowTemplateController extends Controller
                 'id' => $workflow->id,
                 'name' => $workflow->name,
                 'code' => $workflow->code,
+                'type' => $workflow->type,
                 'category' => $workflow->type,
                 'category_label' => self::TYPE_LABELS[$workflow->type] ?? $workflow->type,
                 'description' => $workflow->name,
                 'version' => $workflow->version,
                 'is_active' => $workflow->is_active,
-                'parameter_schema' => $workflow->parameter_schema_json ?? [],
+                'parameter_schema' => $this->normalizeSchema($workflow->parameter_schema_json ?? []),
             ];
         });
 
@@ -68,12 +69,48 @@ class WorkflowTemplateController extends Controller
             'id' => $workflowTemplate->id,
             'name' => $workflowTemplate->name,
             'code' => $workflowTemplate->code,
+            'type' => $workflowTemplate->type,
             'category' => $workflowTemplate->type,
             'category_label' => self::TYPE_LABELS[$workflowTemplate->type] ?? $workflowTemplate->type,
             'description' => $workflowTemplate->name,
             'version' => $workflowTemplate->version,
             'workflow_json' => $workflowTemplate->definition_json,
-            'parameter_schema' => $workflowTemplate->parameter_schema_json ?? [],
+            'parameter_schema' => $this->normalizeSchema($workflowTemplate->parameter_schema_json ?? []),
         ]);
+    }
+
+    private function normalizeSchema(mixed $schema): array
+    {
+        if (is_string($schema) && $schema !== '') {
+            $decoded = json_decode($schema, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $this->normalizeSchema($decoded);
+            }
+
+            return [];
+        }
+
+        if (!is_array($schema)) {
+            return [];
+        }
+
+        if (array_is_list($schema)) {
+            return array_values(array_filter($schema, fn ($item) => is_array($item)));
+        }
+
+        $normalized = [];
+        foreach ($schema as $key => $config) {
+            if (!is_array($config)) {
+                continue;
+            }
+
+            if (!isset($config['input_key']) && is_string($key) && $key !== '') {
+                $config['input_key'] = $key;
+            }
+
+            $normalized[] = $config;
+        }
+
+        return $normalized;
     }
 }

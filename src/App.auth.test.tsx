@@ -95,7 +95,7 @@ describe("App auth flow", () => {
   it("renders after login and logout without hook order errors", async () => {
     const view = render(<App />);
 
-    expect(await screen.findByRole("button", { name: "登录" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "登录工作台" })).toBeInTheDocument();
 
     await act(async () => {
       useStore.getState().login("token-123", {
@@ -107,7 +107,7 @@ describe("App auth flow", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTitle("退出登录")).toBeInTheDocument();
+      expect(screen.getByText("Beikuman AI Studio")).toBeInTheDocument();
     });
 
     expect(console.error).not.toHaveBeenCalledWith(
@@ -119,7 +119,7 @@ describe("App auth flow", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "登录工作台" })).toBeInTheDocument();
     });
 
     view.unmount();

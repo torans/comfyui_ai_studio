@@ -14,17 +14,20 @@ interface LoginResponse {
   user: User;
 }
 
-interface ParameterSchema {
+export interface ParameterSchema {
   node: string;
   field: string;
+  input_key?: string;
   label: string;
   type: string;
   default?: unknown;
   required?: boolean;
   options?: Record<string, string>;
+  accept?: string;
+  placeholder?: string;
 }
 
-interface WorkflowTemplate {
+export interface WorkflowTemplate {
   id: number;
   name: string;
   code: string;
@@ -78,10 +81,11 @@ export const generationJobs = {
     return result;
   },
 
-  async list(token: string): Promise<{ data: GenerationJob[] }> {
-    const result = await invoke<{ data: GenerationJob[] }>('api_get_jobs', {
+  async list(token: string, page: number = 1): Promise<{ data: GenerationJob[], meta: any }> {
+    const result = await invoke<{ data: GenerationJob[], meta: any }>('api_get_jobs', {
       adminUrl: ADMIN_URL,
       token,
+      page,
     });
     return result;
   },
@@ -133,6 +137,45 @@ export const comfyUiProxy = {
     });
     return result;
   },
+
+  async uploadWorkflowImage(token: string, fileData: number[], fileName: string, mimeType: string): Promise<{
+    id: number;
+    path: string;
+    url: string;
+    input_value: string;
+    comfyui: {
+      name: string;
+      subfolder: string;
+      type: string;
+    };
+  }> {
+    const result = await invoke<{
+      id: number;
+      path: string;
+      url: string;
+      input_value: string;
+      comfyui: {
+        name: string;
+        subfolder: string;
+        type: string;
+      };
+    }>('api_upload_workflow_image', {
+      adminUrl: ADMIN_URL,
+      token,
+      fileData,
+      fileName,
+      mimeType,
+    });
+    return result;
+  },
+
+  async downloadRemoteMedia(url: string, suggestedFilename?: string): Promise<{ saved_path: string }> {
+    const result = await invoke<{ saved_path: string }>("api_download_remote_media", {
+      url,
+      suggestedFilename,
+    });
+    return result;
+  },
 };
 
 export interface GenerationJob {
@@ -148,9 +191,12 @@ export interface GenerationJob {
   finished_at?: string;
   created_at: string;
   updated_at: string;
+  progress?: number;
+  message?: string;
   assets?: Array<{
     id: number;
     type: string;
+    media_kind?: "image" | "video";
     filename: string;
     url: string;
   }>;

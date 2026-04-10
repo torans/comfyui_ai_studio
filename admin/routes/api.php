@@ -14,6 +14,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // 文件上传
     Route::post('/uploads/images', [UploadController::class, 'image']);
+    Route::post('/comfyui/uploads/images', [UploadController::class, 'comfyImage']);
 
     // ComfyUI 代理
     Route::get('/comfyui/system-stats', [ComfyUiProxyController::class, 'systemStats']);

@@ -8,7 +8,7 @@ import {
 describe("echo config", () => {
   it("builds a Reverb config that authenticates private channels with bearer token", () => {
     expect(
-      buildReverbConfig("token-123", {
+      buildReverbConfig("token-123", "http://admin.test", {
         wsHost: "admin.test",
         wsPort: 8080,
         forceTLS: false,

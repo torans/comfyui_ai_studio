@@ -3,6 +3,7 @@
 namespace App\Services\ComfyUi;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use App\Services\ComfyUi\ErrorHandler;
 
@@ -32,6 +33,14 @@ class ComfyUiClient
                     'prompt' => $workflow,
                     'client_id' => $clientId,
                 ]);
+
+            if ($response->failed()) {
+                Log::error("ComfyUI Queue Prompt Failed: HTTP {$response->status()}", [
+                    'body' => $response->body(),
+                    'clientId' => $clientId,
+                    // 'workflow' => $workflow, // 此时记录整个 workflow 可能太大，所以只记录 body
+                ]);
+            }
 
             $response->throw();
 
@@ -100,7 +109,16 @@ class ComfyUiClient
                 ->attach('image', fopen($fullPath, 'r'), $overwriteFilename ?? $originalFilename, [
                     'Content-Type' => $mimeType,
                 ])
-                ->post('/upload/image');
+                ->post('/upload/image', [
+                    'type' => 'input',
+                ]);
+
+            if ($response->failed()) {
+                Log::error("ComfyUI Image Upload Failed: HTTP {$response->status()}", [
+                    'body' => $response->body(),
+                    'filePath' => $filePath,
+                ]);
+            }
 
             $response->throw();
 

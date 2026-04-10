@@ -1,4 +1,8 @@
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize)]
 struct ComfyPromptRequest {
@@ -328,11 +332,177 @@ async fn api_upload_to_admin(admin_url: String, token: String, file_data: Vec<u8
     }
 }
 
+#[tauri::command]
+async fn api_upload_workflow_image(admin_url: String, token: String, file_data: Vec<u8>, file_name: String, mime_type: String) -> Result<serde_json::Value, String> {
+    let base_url = admin_url.trim_end_matches('/');
+    let full_url = format!("{}/api/comfyui/uploads/images", base_url);
+
+    let client = reqwest::Client::new();
+
+    let part = reqwest::multipart::Part::bytes(file_data)
+        .file_name(file_name)
+        .mime_str(&mime_type)
+        .map_err(|e| format!("Invalid MIME type: {}", e))?;
+
+    let form = reqwest::multipart::Form::new()
+        .part("file", part);
+
+    let response = client
+        .post(&full_url)
+        .header("Authorization", format!("Bearer {}", token))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if response.status().is_success() {
+        let json: serde_json::Value = response.json().await.map_err(|e| format!("Failed to parse: {}", e))?;
+        Ok(json)
+    } else {
+        let err_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        Err(format!("上传工作流图片失败: {}", err_text))
+    }
+}
+
+fn sanitize_filename_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect::<String>()
+        .trim()
+        .trim_matches('.')
+        .to_string()
+}
+
+fn extension_from_content_type(content_type: &str) -> Option<&'static str> {
+    let lowered = content_type.to_ascii_lowercase();
+
+    if lowered.contains("png") {
+        Some("png")
+    } else if lowered.contains("jpeg") || lowered.contains("jpg") {
+        Some("jpg")
+    } else if lowered.contains("webp") {
+        Some("webp")
+    } else if lowered.contains("gif") {
+        Some("gif")
+    } else if lowered.contains("mp4") {
+        Some("mp4")
+    } else if lowered.contains("webm") {
+        Some("webm")
+    } else if lowered.contains("quicktime") || lowered.contains("mov") {
+        Some("mov")
+    } else {
+        None
+    }
+}
+
+fn infer_extension(url: &str, headers: &reqwest::header::HeaderMap, suggested_filename: Option<&str>) -> String {
+    let from_filename = suggested_filename
+        .and_then(|name| Path::new(name).extension())
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.trim().trim_start_matches('.').to_ascii_lowercase())
+        .filter(|ext| !ext.is_empty());
+
+    if let Some(extension) = from_filename {
+        return extension;
+    }
+
+    let from_url = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.path_segments().and_then(|segments| segments.last().map(|segment| segment.to_string())))
+        .and_then(|segment| Path::new(&segment).extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_ascii_lowercase()))
+        .filter(|ext| !ext.is_empty());
+
+    if let Some(extension) = from_url {
+        return extension;
+    }
+
+    headers
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(extension_from_content_type)
+        .unwrap_or("bin")
+        .to_string()
+}
+
+fn build_download_filename(url: &str, suggested_filename: Option<&str>, extension: &str) -> String {
+    let suggested_stem = suggested_filename
+        .and_then(|name| Path::new(name).file_stem())
+        .and_then(|stem| stem.to_str())
+        .map(sanitize_filename_component)
+        .filter(|stem| !stem.is_empty());
+
+    let url_stem = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.path_segments().and_then(|segments| segments.last().map(|segment| segment.to_string())))
+        .and_then(|segment| Path::new(&segment).file_stem().and_then(|stem| stem.to_str()).map(sanitize_filename_component))
+        .filter(|stem| !stem.is_empty());
+
+    let stem = suggested_stem.or(url_stem).unwrap_or_else(|| {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or_default();
+        format!("beikuman_{}_{}", timestamp, uuid::Uuid::new_v4().simple())
+    });
+
+    format!("{}.{}", stem, extension)
+}
+
+#[tauri::command]
+async fn api_download_remote_media(
+    app: AppHandle,
+    url: String,
+    suggested_filename: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("下载媒体失败: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("下载媒体失败: {}", response.status()));
+    }
+
+    let headers = response.headers().clone();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("读取媒体内容失败: {}", e))?;
+
+    let download_root = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("无法定位下载目录: {}", e))?;
+    let download_dir = download_root.join("Beikuman AI Studio");
+    std::fs::create_dir_all(&download_dir).map_err(|e| format!("创建下载目录失败: {}", e))?;
+
+    let extension = infer_extension(&url, &headers, suggested_filename.as_deref());
+    let filename = build_download_filename(&url, suggested_filename.as_deref(), &extension);
+    let saved_path = download_dir.join(filename);
+
+    std::fs::write(&saved_path, &bytes).map_err(|e| format!("保存媒体失败: {}", e))?;
+
+    Ok(serde_json::json!({
+        "saved_path": saved_path.to_string_lossy().to_string()
+    }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![send_comfy_prompt, get_comfy_models, api_login, api_get_workflows, api_create_job, api_get_jobs, api_get_job, api_comfyui_system_stats, api_comfyui_models, api_upload_image_to_comfyui, api_upload_to_admin])
+        .invoke_handler(tauri::generate_handler![send_comfy_prompt, get_comfy_models, api_login, api_get_workflows, api_create_job, api_get_jobs, api_get_job, api_comfyui_system_stats, api_comfyui_models, api_upload_image_to_comfyui, api_upload_to_admin, api_upload_workflow_image, api_download_remote_media])
         .setup(|_app| {
             Ok(())
         })
