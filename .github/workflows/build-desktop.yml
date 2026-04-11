@@ -21,15 +21,24 @@ jobs:
           - name: Windows
             runner: windows-latest
             artifact_name: beikuman-ai-studio-windows
+            rust_target: ""
             artifact_paths: |
               src-tauri/target/release/bundle/nsis/*.exe
               src-tauri/target/release/bundle/msi/*.msi
-          - name: macOS
-            runner: macos-latest
-            artifact_name: beikuman-ai-studio-macos
+          - name: macOS Intel
+            runner: macos-13
+            artifact_name: beikuman-ai-studio-macos-intel
+            rust_target: x86_64-apple-darwin
             artifact_paths: |
-              src-tauri/target/release/bundle/dmg/*.dmg
-              src-tauri/target/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+          - name: macOS Apple Silicon
+            runner: macos-14
+            artifact_name: beikuman-ai-studio-macos-apple-silicon
+            rust_target: aarch64-apple-darwin
+            artifact_paths: |
+              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
 
     steps:
       - name: Checkout
@@ -42,6 +51,13 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        if: matrix.platform.rust_target == ''
+
+      - name: Setup Rust target
+        uses: dtolnay/rust-toolchain@stable
+        if: matrix.platform.rust_target != ''
+        with:
+          targets: ${{ matrix.platform.rust_target }}
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -55,7 +71,7 @@ jobs:
           releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Beikuman AI Studio {0}', github.ref_name) || '' }}
           releaseBody: ${{ startsWith(github.ref, 'refs/tags/v') && 'Desktop installers for Beikuman AI Studio.' || '' }}
           generateReleaseNotes: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          args: ""
+          args: ${{ matrix.platform.rust_target != '' && format('--target {0}', matrix.platform.rust_target) || '' }}
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
