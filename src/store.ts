@@ -64,6 +64,7 @@ const storage = typeof window !== 'undefined' ? window.localStorage : null;
 const storedToken = storage?.getItem('auth_token') ?? null;
 const storedUser = storage?.getItem('auth_user') ?? null;
 const storedTheme = (storage?.getItem('app_theme') as ThemeMode | null) ?? 'auto';
+const storedServerUrl = storage?.getItem('server_url') ?? 'http://admin.test';
 
 export const useStore = create<AppState>((set) => ({
   // Auth state
@@ -75,7 +76,7 @@ export const useStore = create<AppState>((set) => ({
   theme: storedTheme,
 
   // ComfyUI state
-  serverUrl: 'http://admin.test',
+  serverUrl: storedServerUrl,
   isConnected: false,
   checkpoints: [],
   selectedModel: '',
@@ -91,42 +92,45 @@ export const useStore = create<AppState>((set) => ({
   // Auth actions
   setToken: (token: string | null) => {
     if (token) {
-      localStorage.setItem('auth_token', token);
+      storage?.setItem('auth_token', token);
     } else {
-      localStorage.removeItem('auth_token');
+      storage?.removeItem('auth_token');
     }
     set({ token });
   },
 
   setUser: (user: User | null) => {
     if (user) {
-      localStorage.setItem('auth_user', JSON.stringify(user));
+      storage?.setItem('auth_user', JSON.stringify(user));
     } else {
-      localStorage.removeItem('auth_user');
+      storage?.removeItem('auth_user');
     }
     set({ user });
   },
 
   login: (token: string, user: User) => {
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('auth_user', JSON.stringify(user));
+    storage?.setItem('auth_token', token);
+    storage?.setItem('auth_user', JSON.stringify(user));
     set({ token, user, isAuthenticated: true });
   },
 
   logout: () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
+    storage?.removeItem('auth_token');
+    storage?.removeItem('auth_user');
     set({ token: null, user: null, isAuthenticated: false, jobs: [], currentJobId: null });
   },
 
   // Theme actions
   setTheme: (theme: ThemeMode) => {
-    localStorage.setItem('app_theme', theme);
+    storage?.setItem('app_theme', theme);
     set({ theme });
   },
 
   // ComfyUI actions
-  setServerUrl: (url: string) => set({ serverUrl: url }),
+  setServerUrl: (url: string) => {
+    storage?.setItem('server_url', url);
+    set({ serverUrl: url });
+  },
   setConnected: (status: boolean) => set({ isConnected: status }),
   setCheckpoints: (list: string[]) => set({ checkpoints: list }),
   setSelectedModel: (model: string) => set({ selectedModel: model }),

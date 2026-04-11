@@ -14,9 +14,23 @@ const WORKFLOW_TYPE_LABELS: Record<string, string> = {
     other: '其他工具',
 };
 
+const resolveThumbPreviewUrl = (value?: string | null): string | null => {
+    if (!value) {
+        return null;
+    }
+
+    if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('data:')) {
+        return value;
+    }
+
+    return value.startsWith('/') ? value : `/${value}`;
+};
+
 interface WorkflowTemplate {
     id: number;
     name: string;
+    description?: string | null;
+    thumb?: string | null;
     code: string;
     type: string;
     version: string;
@@ -44,7 +58,7 @@ export default function Workflows() {
     const handleStart = async (id: number) => {
         setLoading(id);
         try {
-            await window.axios.post(`/api/workflow-templates/${id}/start`);
+            router.post(`/admin/workflows/${id}/start`);
             window.location.reload();
         } catch {
             alert('启动失败');
@@ -56,7 +70,7 @@ export default function Workflows() {
     const handleStop = async (id: number) => {
         setLoading(id);
         try {
-            await window.axios.post(`/api/workflow-templates/${id}/stop`);
+            router.post(`/admin/workflows/${id}/stop`);
             window.location.reload();
         } catch (error: unknown) {
             const err = error as { response?: { data?: { message?: string } } };
@@ -103,7 +117,29 @@ export default function Workflows() {
                                 workflows.data.map((workflow) => (
                                     <tr key={workflow.id} className="hover:bg-muted/30">
                                         <td className="px-4 py-3 font-mono text-sm">{workflow.id}</td>
-                                        <td className="px-4 py-3 font-medium">{workflow.name}</td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-12 w-12 overflow-hidden rounded-xl border border-border bg-muted/40">
+                                                    {resolveThumbPreviewUrl(workflow.thumb) ? (
+                                                        <img
+                                                            src={resolveThumbPreviewUrl(workflow.thumb) || undefined}
+                                                            alt={workflow.name}
+                                                            className="h-full w-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                                                            无图
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="truncate font-medium">{workflow.name}</div>
+                                                    <div className="truncate text-xs text-muted-foreground">
+                                                        {workflow.description || '未填写描述'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
                                         <td className="px-4 py-3 font-mono text-sm">{workflow.code}</td>
                                         <td className="px-4 py-3">
                                             <Badge variant="outline">

@@ -80,6 +80,36 @@ const getSuggestedFilename = (asset: Pick<MediaAsset, "url" | "filename">): stri
   }
 };
 
+const resolveWorkflowThumbUrl = (thumb: string | null | undefined, serverUrl: string): string | null => {
+  if (!thumb) {
+    return null;
+  }
+
+  if (thumb.startsWith("http://") || thumb.startsWith("https://") || thumb.startsWith("data:")) {
+    return thumb;
+  }
+
+  const normalizedBase = serverUrl.replace(/\/+$/, "");
+  const normalizedPath = thumb.startsWith("/") ? thumb : `/${thumb}`;
+  return `${normalizedBase}${normalizedPath}`;
+};
+
+const WorkflowThumb = ({ workflow, compact = false }: { workflow: WorkflowTemplate; compact?: boolean }) => {
+  const serverUrl = useStore(state => state.serverUrl);
+  const className = compact ? "workflow-thumb workflow-thumb-compact" : "workflow-thumb";
+  const thumbSrc = resolveWorkflowThumbUrl(workflow.thumb, serverUrl);
+
+  if (thumbSrc) {
+    return <img className={className} src={thumbSrc} alt={workflow.name} />;
+  }
+
+  return (
+    <div className={`${className} workflow-thumb-fallback`} aria-hidden="true">
+      <ImageIcon size={compact ? 16 : 22} />
+    </div>
+  );
+};
+
 const saveRemoteMedia = async (asset: Pick<MediaAsset, "url" | "filename">): Promise<string> => {
   const result = await comfyUiProxy.downloadRemoteMedia(asset.url, getSuggestedFilename(asset));
   return result.saved_path;
@@ -175,7 +205,7 @@ export default function App() {
     if (store.isAuthenticated && store.token) {
       const initData = async () => {
         try {
-          const result = await workflowTemplates.list(store.token!);
+          const result = await workflowTemplates.list(store.serverUrl, store.token!);
           store.setWorkflows(result.data);
           
           if (result.data.length > 0) {
@@ -185,7 +215,7 @@ export default function App() {
           }
 
           if (store.user?.id) {
-            listenToJobStatus(store.token!, store.user.id, "http://admin.test", (data) => {
+            listenToJobStatus(store.token!, store.user.id, store.serverUrl, (data) => {
               store.updateJob(data.id, data);
             });
           }
@@ -193,20 +223,20 @@ export default function App() {
       };
       initData();
     }
-  }, [store.isAuthenticated, store.token, store.user?.id]);
+  }, [store.isAuthenticated, store.token, store.user?.id, store.serverUrl]);
 
   useEffect(() => {
      if (!store.isAuthenticated || !store.token) return;
      const check = async () => {
         try {
-          const res = await comfyUiProxy.systemStats(store.token!);
+          const res = await comfyUiProxy.systemStats(store.serverUrl, store.token!);
           setConnected(res.online);
         } catch { setConnected(false); }
      };
      check();
      const timer = setInterval(check, 10000);
      return () => clearInterval(timer);
-  }, [store.token]);
+  }, [store.token, store.serverUrl]);
 
   if (!store.isAuthenticated) return <div className="app-container"><LoginView /></div>;
 
@@ -274,9 +304,15 @@ export default function App() {
                   className={`workflow-item ${store.selectedWorkflowId === w.id ? 'active' : ''}`}
                   onClick={() => store.setSelectedWorkflowId(w.id)}
                 >
-                  <div className="w-label-group">
-                    <span className="w-name">{w.name}</span>
-                    <span className="w-ver">{w.version}</span>
+                  <div className="workflow-item-main">
+                    <WorkflowThumb workflow={w} compact />
+                    <div className="w-copy-group">
+                      <div className="w-label-group">
+                        <span className="w-name">{w.name}</span>
+                        <span className="w-ver">{w.version}</span>
+                      </div>
+                      <span className="w-desc">{w.description || "未填写工作流描述"}</span>
+                    </div>
                   </div>
                   <ChevronRight size={14} className="w-arrow" />
                 </button>
@@ -297,7 +333,7 @@ export default function App() {
 
 // ── Dynamic Workflow View ───────────────────────────────────────────────────
 const DynamicWorkflowView = () => {
-  const { token, workflows, selectedWorkflowId } = useStore();
+  const { token, workflows, selectedWorkflowId, serverUrl } = useStore();
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflowId);
   
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -392,6 +428,7 @@ const DynamicWorkflowView = () => {
           const file = currentValue;
           const arrayBuffer = await file.arrayBuffer();
           const uploadRes = await comfyUiProxy.uploadWorkflowImage(
+            serverUrl,
             token,
             Array.from(new Uint8Array(arrayBuffer)),
             file.name,
@@ -405,7 +442,7 @@ const DynamicWorkflowView = () => {
           finalInputs[inputKey] = currentValue;
         }
       }
-      const job = await generationJobs.create(token, currentWorkflow.id, finalInputs);
+      const job = await generationJobs.create(serverUrl, token, currentWorkflow.id, finalInputs);
       setCurrentJobId(job.job_id);
       setToastState({
         title: "已加入生成队列",
@@ -432,7 +469,15 @@ const DynamicWorkflowView = () => {
       ) : null}
       <section className="params-area">
         <header>
-          <h2>{currentWorkflow.name}</h2>
+          <div className="workflow-headline">
+            <WorkflowThumb workflow={currentWorkflow} />
+            <div className="workflow-headline-copy">
+              <h2>{currentWorkflow.name}</h2>
+              {currentWorkflow.description ? (
+                <p className="workflow-headline-desc">{currentWorkflow.description}</p>
+              ) : null}
+            </div>
+          </div>
         </header>
 
         <div className="fields-scroller">
@@ -639,20 +684,75 @@ const LoginView = () => {
     const store = useStore();
     const [e, setE] = useState("");
     const [p, setP] = useState("");
+    const [serverInput, setServerInput] = useState(store.serverUrl);
     const [l, setL] = useState(false);
+    const [testingServer, setTestingServer] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [loginError, setLoginError] = useState<string | null>(null);
-    const canSubmit = e.trim().length > 0 && p.trim().length > 0 && !l;
+    const [loginNotice, setLoginNotice] = useState<string | null>(null);
+    const normalizeServerUrl = (value: string) => value.trim().replace(/\/+$/, "");
+    const canSubmit = e.trim().length > 0 && p.trim().length > 0 && normalizeServerUrl(serverInput).length > 0 && !l;
+
+    const isValidServerUrl = (value: string) => {
+        try {
+            const parsed = new URL(normalizeServerUrl(value));
+            return parsed.protocol === "http:" || parsed.protocol === "https:";
+        } catch {
+            return false;
+        }
+    };
+
+    const handleTestServer = async () => {
+        const normalizedUrl = normalizeServerUrl(serverInput);
+        if (!isValidServerUrl(normalizedUrl)) {
+            setLoginError("服务地址格式不正确，请输入完整的 http:// 或 https:// 地址。");
+            setLoginNotice(null);
+            return;
+        }
+
+        setTestingServer(true);
+        setLoginError(null);
+        setLoginNotice(null);
+        try {
+            const response = await fetch(`${normalizedUrl}/sanctum/csrf-cookie`, {
+                method: "GET",
+                credentials: "include",
+            });
+
+            if (!response.ok) {
+                throw new Error(`服务返回状态 ${response.status}`);
+            }
+
+            store.setServerUrl(normalizedUrl);
+            setLoginNotice("服务地址可访问，已保存。");
+        } catch (err: any) {
+            setLoginError(err?.message || "无法连接到该服务地址，请检查地址或网络。");
+            setLoginNotice(null);
+        } finally {
+            setTestingServer(false);
+        }
+    };
+
     const handleLogin = async () => {
         if (!canSubmit) {
-            setLoginError("请输入员工账号与访问密码后再继续。");
+            setLoginError("请先填写服务地址、员工账号与访问密码。");
+            setLoginNotice(null);
+            return;
+        }
+
+        const normalizedUrl = normalizeServerUrl(serverInput);
+        if (!isValidServerUrl(normalizedUrl)) {
+            setLoginError("服务地址格式不正确，请输入完整的 http:// 或 https:// 地址。");
+            setLoginNotice(null);
             return;
         }
 
         setL(true);
         setLoginError(null);
+        setLoginNotice(null);
         try {
-            const res = await auth.login(e.trim(), p);
+            store.setServerUrl(normalizedUrl);
+            const res = await auth.login(normalizedUrl, e.trim(), p);
             store.login(res.token, res.user);
         }
         catch (err: any) {
@@ -686,7 +786,7 @@ const LoginView = () => {
 
                     <div className="login-copy-block">
                         <h1>欢迎回来</h1>
-                        <p>请输入员工账号与访问密码，继续使用工作台。</p>
+                        <p>先确认服务地址，再输入员工账号与访问密码。</p>
                     </div>
 
                     <div className="login-fields">
@@ -698,6 +798,7 @@ const LoginView = () => {
                                 onChange={i => {
                                     setE(i.target.value);
                                     if (loginError) setLoginError(null);
+                                    if (loginNotice) setLoginNotice(null);
                                 }}
                                 onKeyDown={(event) => {
                                     if (event.key === "Enter" && !l) void handleLogin();
@@ -716,6 +817,7 @@ const LoginView = () => {
                                     onChange={i => {
                                         setP(i.target.value);
                                         if (loginError) setLoginError(null);
+                                        if (loginNotice) setLoginNotice(null);
                                     }}
                                     onKeyDown={(event) => {
                                         if (event.key === "Enter" && !l) void handleLogin();
@@ -733,12 +835,38 @@ const LoginView = () => {
                             </div>
                         </label>
                     </div>
+                        <label className="login-field">
+                            <span>服务地址</span>
+                            <input
+                                placeholder="例如：https://admin.example.com"
+                                value={serverInput}
+                                onChange={i => {
+                                    setServerInput(i.target.value);
+                                    if (loginError) setLoginError(null);
+                                    if (loginNotice) setLoginNotice(null);
+                                }}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter" && !testingServer) {
+                                        event.preventDefault();
+                                        void handleTestServer();
+                                    }
+                                }}
+                                aria-invalid={!!loginError && !isValidServerUrl(normalizeServerUrl(serverInput))}
+                            />
+                        </label>
+                    <div className="login-server-actions">
+                        <button type="button" className="login-server-test-btn" onClick={handleTestServer} disabled={testingServer}>
+                            {testingServer ? "正在测试..." : "测试并保存服务地址"}
+                        </button>
+                        <span className="login-server-hint">首次使用或切换环境时，在这里修改服务地址。</span>
+                    </div>
 
                     <button type="button" className="login-submit-btn" onClick={handleLogin} disabled={!canSubmit}>
                         {l ? "正在认证..." : "登录工作台"}
                     </button>
 
                     {loginError ? <p className="login-error-banner" role="alert">{loginError}</p> : null}
+                    {loginNotice ? <p className="login-notice-banner" role="status">{loginNotice}</p> : null}
                     <p className="login-footnote">内部系统仅限已授权员工访问</p>
                 </div>
             </section>
@@ -747,7 +875,7 @@ const LoginView = () => {
 };
 
 const JobsView = () => {
-    const { token, jobs, setJobs } = useStore();
+    const { token, jobs, setJobs, serverUrl } = useStore();
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loading, setLoading] = useState(false);
@@ -760,7 +888,7 @@ const JobsView = () => {
         setLoading(true);
         const nextPage = reset ? 1 : page;
         try {
-            const res = await generationJobs.list(token, nextPage);
+            const res = await generationJobs.list(serverUrl, token, nextPage);
             const newList = res.data;
             if (reset) {
                 setJobs(newList);
@@ -934,7 +1062,6 @@ const Lightbox = ({ items, onClose, title, workflowType, onToast }: { items: Med
                        } catch (err: any) {
                          const message = err?.message || String(err);
                          onToast?.("保存失败", message);
-                         alert(`保存失败: ${message}`);
                        }
                      }}
                    >
@@ -950,72 +1077,169 @@ const Lightbox = ({ items, onClose, title, workflowType, onToast }: { items: Med
 const APP_VERSION = "0.1.0";
 
 const SettingsView = () => {
-    const { user, logout } = useStore();
+    const { user, logout, theme, setTheme, serverUrl, isConnected } = useStore();
+    const { effectiveTheme, systemTheme } = useTheme();
+    const themeOptions = [
+        { value: "light", label: "浅色" },
+        { value: "dark", label: "深色" },
+        { value: "auto", label: "跟随系统" },
+    ] as const;
+
     return (
         <div className="settings-panel">
             <header className="settings-header">
-                <div>
+                <div className="settings-hero-copy">
                     <p className="settings-eyebrow">Beikuman AI Studio</p>
                     <h1>设置中心</h1>
-                    <p className="settings-subtitle">管理账号信息、应用版本与技术支持入口。</p>
+                    <p className="settings-subtitle">账号、连接与界面偏好都收在这里，不做无意义的信息堆叠。</p>
+                </div>
+                <div className="settings-hero-status">
+                    <span className={`settings-connection-pill ${isConnected ? "online" : "offline"}`}>
+                        <span className="settings-connection-dot" />
+                        {isConnected ? "服务在线" : "服务离线"}
+                    </span>
+                    <span className="settings-version-pill">v{APP_VERSION}</span>
                 </div>
             </header>
 
             <div className="settings-grid">
-                <section className="settings-card settings-profile-card">
-                    <div className="settings-card-head">
-                        <div className="settings-icon-shell">
-                            <User size={24} />
-                        </div>
-                        <div>
-                            <h2>账号信息</h2>
-                            <p>当前登录的员工账号与身份信息</p>
-                        </div>
-                    </div>
-
-                    <div className="settings-user-meta">
-                        <div className="settings-meta-row">
-                            <span className="settings-meta-label">姓名</span>
-                            <strong>{user?.name || "未登录"}</strong>
-                        </div>
-                        <div className="settings-meta-row">
-                            <span className="settings-meta-label">账号</span>
-                            <strong>{user?.email || "—"}</strong>
-                        </div>
-                    </div>
-
-                    <button type="button" className="settings-logout-btn" onClick={logout}>
-                        <LogOut size={16} />
-                        <span>退出登录</span>
-                    </button>
-                </section>
-
-                <section className="settings-card settings-about-card">
-                    <div className="settings-card-head">
-                        <div className="settings-icon-shell accent">
-                            <Sparkles size={24} />
-                        </div>
-                        <div>
-                            <h2>关于应用</h2>
-                            <p>版本信息与技术支持</p>
-                        </div>
-                    </div>
-
-                    <div className="settings-user-meta compact">
-                        <div className="settings-meta-row">
-                            <span className="settings-meta-label">当前版本</span>
-                            <strong>v{APP_VERSION}</strong>
-                        </div>
-                        <div className="settings-meta-row align-start">
-                            <span className="settings-meta-label">技术支持</span>
-                            <div className="settings-support-copy">
-                                <strong>兰秋十六</strong>
-                                <a href="https://lanqiu.tech" target="_blank" rel="noreferrer">https://lanqiu.tech</a>
-                                <span>由兰秋十六提供技术支持</span>
+                <div className="settings-sheet">
+                    <section className="settings-group">
+                        <div className="settings-group-head">
+                            <div className="settings-card-title">
+                                <span className="settings-section-kicker">账号</span>
+                                <h2>当前登录账号</h2>
+                            </div>
+                            <div className="settings-icon-shell soft">
+                                <User size={20} />
                             </div>
                         </div>
-                    </div>
-                </section>
+
+                        <div className="settings-profile-hero">
+                            <div className="settings-avatar-block">
+                                <div className="settings-avatar-shell">
+                                    <User size={30} />
+                                </div>
+                                <div className="settings-avatar-copy">
+                                    <strong>{user?.name || "未登录"}</strong>
+                                    <span>{user?.email || "—"}</span>
+                                </div>
+                            </div>
+                            <span className="settings-role-pill">{user?.role || "staff"}</span>
+                        </div>
+
+                        <div className="settings-list">
+                            <div className="settings-list-row">
+                                <span className="settings-row-label">姓名</span>
+                                <strong>{user?.name || "未登录"}</strong>
+                            </div>
+                            <div className="settings-list-row">
+                                <span className="settings-row-label">账号</span>
+                                <strong>{user?.email || "—"}</strong>
+                            </div>
+                            <div className="settings-list-row">
+                                <span className="settings-row-label">角色</span>
+                                <strong>{user?.role || "staff"}</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="settings-group">
+                        <div className="settings-group-head">
+                            <div className="settings-card-title">
+                                <span className="settings-section-kicker">偏好</span>
+                                <h2>界面与连接</h2>
+                            </div>
+                            <div className="settings-icon-shell soft">
+                                <Settings2 size={20} />
+                            </div>
+                        </div>
+
+                        <div className="settings-list">
+                            <div className="settings-list-row align-top">
+                                <span className="settings-row-label">主题模式</span>
+                                <div className="settings-theme-switcher" role="group" aria-label="主题模式">
+                                    {themeOptions.map((item) => (
+                                        <button
+                                            key={item.value}
+                                            type="button"
+                                            className={`settings-theme-btn ${theme === item.value ? "active" : ""}`}
+                                            onClick={() => setTheme(item.value as "light" | "dark" | "auto")}
+                                        >
+                                            {item.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="settings-list-row">
+                                <span className="settings-row-label">当前生效</span>
+                                <strong>{effectiveTheme === "dark" ? "深色模式" : "浅色模式"}</strong>
+                            </div>
+
+                            <div className="settings-list-row">
+                                <span className="settings-row-label">系统主题</span>
+                                <strong>{systemTheme === "dark" ? "深色" : "浅色"}</strong>
+                            </div>
+
+                            <div className="settings-list-row align-top">
+                                <span className="settings-row-label">服务地址</span>
+                                <div className="settings-row-stack">
+                                    <strong>{serverUrl}</strong>
+                                    <span>{isConnected ? "ComfyUI 连接正常" : "ComfyUI 连接断开"}</span>
+                                </div>
+                            </div>
+
+                            <div className="settings-list-row">
+                                <span className="settings-row-label">连接状态</span>
+                                <strong className={`settings-inline-status ${isConnected ? "ok" : "bad"}`}>
+                                    {isConnected ? "在线" : "离线"}
+                                </strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="settings-group">
+                        <div className="settings-group-head">
+                            <div className="settings-card-title">
+                                <span className="settings-section-kicker">应用</span>
+                                <h2>版本与支持</h2>
+                            </div>
+                            <div className="settings-icon-shell accent">
+                                <Sparkles size={20} />
+                            </div>
+                        </div>
+
+                        <div className="settings-list">
+                            <div className="settings-list-row">
+                                <span className="settings-row-label">当前版本</span>
+                                <strong>v{APP_VERSION}</strong>
+                            </div>
+                            <div className="settings-list-row align-top">
+                                <span className="settings-row-label">技术支持</span>
+                                <div className="settings-row-stack">
+                                    <strong>兰秋十六</strong>
+                                    <a href="https://lanqiu.tech" target="_blank" rel="noreferrer">lanqiu.tech</a>
+                                    <span>由兰秋十六提供技术支持</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="settings-group settings-group-danger">
+                        <div className="settings-danger-zone">
+                            <div className="settings-danger-copy">
+                                <span className="settings-section-kicker">会话</span>
+                                <strong>退出当前账号</strong>
+                                <span>退出后需要重新登录才能继续使用工作流与任务记录。</span>
+                            </div>
+                            <button type="button" className="settings-logout-btn" onClick={logout}>
+                                <LogOut size={16} />
+                                <span>退出登录</span>
+                            </button>
+                        </div>
+                    </section>
+                </div>
             </div>
         </div>
     );
@@ -1038,7 +1262,6 @@ const ImageViewer = ({
     } catch (err: any) {
       const message = err?.message || String(err);
       onToast?.("下载失败", message);
-      alert(`下载失败: ${message}`);
     }
   };
   return (
@@ -1069,7 +1292,6 @@ const VideoViewer = ({
     } catch (err: any) {
       const message = err?.message || String(err);
       onToast?.("下载失败", message);
-      alert(`下载失败: ${message}`);
     }
   };
 

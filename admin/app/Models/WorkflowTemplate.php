@@ -20,6 +20,8 @@ class WorkflowTemplate extends Model
      */
     protected $fillable = [
         'name',
+        'description',
+        'thumb',
         'code',
         'type',
         'version',

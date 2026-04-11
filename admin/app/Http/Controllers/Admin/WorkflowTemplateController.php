@@ -39,6 +39,8 @@ class WorkflowTemplateController extends Controller
             'workflow' => [
                 'id' => $workflowTemplate->id,
                 'name' => $workflowTemplate->name,
+                'description' => $workflowTemplate->description,
+                'thumb' => $workflowTemplate->thumb,
                 'code' => $workflowTemplate->code,
                 'type' => $workflowTemplate->type,
                 'version' => $workflowTemplate->version,
@@ -63,6 +65,8 @@ class WorkflowTemplateController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'thumb' => ['nullable', 'string', 'max:2048'],
             'code' => ['required', 'string', 'max:100', 'unique:workflow_templates,code'],
             'type' => ['required', 'in:t2i,i2i,t2v,i2v,other'],
             'version' => ['required', 'string', 'max:50'],
@@ -86,6 +90,8 @@ class WorkflowTemplateController extends Controller
     {
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:1000'],
+            'thumb' => ['nullable', 'string', 'max:2048'],
             'code' => ['sometimes', 'string', 'max:100', 'unique:workflow_templates,code,' . $workflowTemplate->id],
             'type' => ['sometimes', 'in:t2i,i2i,t2v,i2v,other'],
             'version' => ['sometimes', 'string', 'max:50'],

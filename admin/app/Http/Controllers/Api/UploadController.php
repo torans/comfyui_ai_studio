@@ -14,11 +14,6 @@ use Illuminate\Support\Facades\Storage;
  */
 class UploadController extends Controller
 {
-    public function __construct(
-        private ComfyUiClient $comfyUiClient
-    ) {
-    }
-
     /**
      * 上传图片
      */
@@ -106,7 +101,7 @@ class UploadController extends Controller
             ], 500);
         }
 
-        $comfyUpload = $this->comfyUiClient->uploadImage($storedPath);
+        $comfyUpload = app(ComfyUiClient::class)->uploadImage($storedPath);
         $inputValue = $comfyUpload['name'] ?? $comfyUpload['filename'] ?? basename($storedPath);
 
         return response()->json([

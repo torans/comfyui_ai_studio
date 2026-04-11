@@ -4,7 +4,6 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\WorkflowTemplateController;
 use App\Http\Controllers\Admin\WorkflowsController;
-use App\Http\Controllers\Api\UploadController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 
@@ -29,7 +28,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/workflows/{workflow_template}/edit', [WorkflowTemplateController::class, 'edit'])->name('admin.workflows.edit');
     Route::post('/admin/workflows', [WorkflowTemplateController::class, 'store'])->name('admin.workflows.store');
     Route::put('/admin/workflows/{workflow_template}', [WorkflowTemplateController::class, 'update'])->name('admin.workflows.update');
-    Route::post('/admin/uploads/images', [UploadController::class, 'image'])->name('admin.uploads.images');
+    Route::post('/admin/workflows/{workflow}/start', [WorkflowsController::class, 'start'])->name('admin.workflows.start');
+    Route::post('/admin/workflows/{workflow}/stop', [WorkflowsController::class, 'stop'])->name('admin.workflows.stop');
     
     // 员工管理
     Route::get('/admin/employees', [EmployeeController::class, 'index'])->name('admin.employees.index');
@@ -38,10 +38,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/admin/employees', [EmployeeController::class, 'store'])->name('admin.employees.store');
     Route::put('/admin/employees/{employee}', [EmployeeController::class, 'update'])->name('admin.employees.update');
     Route::delete('/admin/employees/{employee}', [EmployeeController::class, 'destroy'])->name('admin.employees.destroy');
-    
-
 });
 
 require __DIR__.'/settings.php';
-Route::post('/admin/workflows/{workflow}/start', [WorkflowsController::class, 'start'])->name('admin.workflows.start');
-    Route::post('/admin/workflows/{workflow}/stop', [WorkflowsController::class, 'stop'])->name('admin.workflows.stop');

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CheckLicense;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
@@ -26,6 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
+
+        // 添加授权检查中间件到全局
+        $middleware->prepend(CheckLicense::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

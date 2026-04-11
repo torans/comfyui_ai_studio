@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { WorkflowThumbUploadField } from '@/components/workflow-thumb-upload-field';
 import {
     Select,
     SelectContent,
@@ -21,6 +22,8 @@ interface TypeOption {
 interface Workflow {
     id: number;
     name: string;
+    description?: string | null;
+    thumb?: string | null;
     code: string;
     type: string;
     version: string;
@@ -38,6 +41,8 @@ export default function EditWorkflow() {
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({
         name: workflow?.name || '',
+        description: workflow?.description || '',
+        thumb: workflow?.thumb || '',
         code: workflow?.code || '',
         type: workflow?.type || 't2i',
         version: workflow?.version || '1.0.0',
@@ -98,6 +103,23 @@ export default function EditWorkflow() {
                                     onChange={(e) => setFormData({ ...formData, code: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
                                     placeholder="例如：t2i_default"
                                     required
+                                />
+                            </div>
+
+                            <WorkflowThumbUploadField
+                                value={formData.thumb}
+                                onChange={(thumb) => setFormData({ ...formData, thumb })}
+                                disabled={saving}
+                            />
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="description">描述</Label>
+                                <Textarea
+                                    id="description"
+                                    value={formData.description}
+                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                    placeholder="一句话描述这个工作流的用途"
+                                    className="min-h-[100px]"
                                 />
                             </div>
 

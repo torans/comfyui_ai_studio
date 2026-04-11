@@ -24,7 +24,7 @@ export default function Login({
 }: Props) {
     return (
         <>
-            <Head title="Log in" />
+            <Head title="登录" />
 
             <Form
                 {...store.form()}
@@ -44,14 +44,23 @@ export default function Login({
                                     autoFocus
                                     tabIndex={1}
                                     autoComplete="email"
-                                    placeholder="email@example.com"
+                                    placeholder="请输入邮箱地址"
                                 />
                                 <InputError message={errors.email} />
                             </div>
 
                             <div className="grid gap-2">
                                 <div className="flex items-center">
-                                    <Label htmlFor="password">管理密码</Label>
+                                    <Label htmlFor="password">密码</Label>
+                                    {canResetPassword && (
+                                        <TextLink
+                                            href={request()}
+                                            className="ml-auto text-sm"
+                                            tabIndex={5}
+                                        >
+                                            忘记密码？
+                                        </TextLink>
+                                    )}
                                 </div>
                                 <PasswordInput
                                     id="password"
@@ -59,10 +68,20 @@ export default function Login({
                                     required
                                     tabIndex={2}
                                     autoComplete="current-password"
-                                    placeholder="Password"
+                                    placeholder="请输入密码"
                                 />
                                 <InputError message={errors.password} />
                             </div>
+
+                            <div className="flex items-center space-x-3">
+                                <Checkbox
+                                    id="remember"
+                                    name="remember"
+                                    tabIndex={3}
+                                />
+                                <Label htmlFor="remember">记住我</Label>
+                            </div>
+
                             <Button
                                 type="submit"
                                 className="mt-4 w-full"
@@ -74,6 +93,15 @@ export default function Login({
                                 登录
                             </Button>
                         </div>
+
+                        {canRegister && (
+                            <div className="text-center text-sm text-muted-foreground">
+                                还没有账号？{' '}
+                                <TextLink href={register()} tabIndex={5}>
+                                    立即注册
+                                </TextLink>
+                            </div>
+                        )}
                     </>
                 )}
             </Form>
@@ -88,6 +116,6 @@ export default function Login({
 }
 
 Login.layout = {
-    title: '管理员登录',
-    description: '输入账号、密码登录',
+    title: '登录您的账号',
+    description: '请输入您的邮箱和密码进行登录',
 };

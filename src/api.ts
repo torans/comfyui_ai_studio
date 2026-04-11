@@ -1,7 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 
-const ADMIN_URL = 'http://admin.test';
-
 interface User {
   id: number;
   name: string;
@@ -30,21 +28,22 @@ export interface ParameterSchema {
 export interface WorkflowTemplate {
   id: number;
   name: string;
+  thumb?: string | null;
   code: string;
   type: string;
   version: string;
   is_active: boolean;
   category: string;
   category_label: string;
-  description?: string;
+  description?: string | null;
   parameter_schema: ParameterSchema[];
 }
 
 // 认证 API - 通过 Tauri 命令
 export const auth = {
-  async login(email: string, password: string): Promise<LoginResponse> {
+  async login(adminUrl: string, email: string, password: string): Promise<LoginResponse> {
     const result = await invoke<{ token: string; user: User }>('api_login', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       email,
       password,
     });
@@ -54,9 +53,9 @@ export const auth = {
 
 // 工作流模板 API
 export const workflowTemplates = {
-  async list(token: string): Promise<{ data: WorkflowTemplate[] }> {
+  async list(adminUrl: string, token: string): Promise<{ data: WorkflowTemplate[] }> {
     const result = await invoke<{ data: WorkflowTemplate[] }>('api_get_workflows', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
     });
     return result;
@@ -66,13 +65,14 @@ export const workflowTemplates = {
 // 生成任务 API
 export const generationJobs = {
   async create(
+    adminUrl: string,
     token: string,
     workflowId: number,
     inputs: Record<string, unknown>,
     clientRequestId?: string
   ): Promise<{ job_id: number; status: string }> {
     const result = await invoke<{ job_id: number; status: string }>('api_create_job', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
       workflowId,
       inputs,
@@ -81,18 +81,18 @@ export const generationJobs = {
     return result;
   },
 
-  async list(token: string, page: number = 1): Promise<{ data: GenerationJob[], meta: any }> {
+  async list(adminUrl: string, token: string, page: number = 1): Promise<{ data: GenerationJob[], meta: any }> {
     const result = await invoke<{ data: GenerationJob[], meta: any }>('api_get_jobs', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
       page,
     });
     return result;
   },
 
-  async get(token: string, jobId: number): Promise<GenerationJob> {
+  async get(adminUrl: string, token: string, jobId: number): Promise<GenerationJob> {
     const result = await invoke<GenerationJob>('api_get_job', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
       jobId,
     });
@@ -102,34 +102,34 @@ export const generationJobs = {
 
 // ComfyUI 代理 API - 通过 Admin 代理访问 ComfyUI
 export const comfyUiProxy = {
-  async systemStats(token: string): Promise<{ online: boolean; data?: unknown; error?: string }> {
+  async systemStats(adminUrl: string, token: string): Promise<{ online: boolean; data?: unknown; error?: string }> {
     const result = await invoke<{ online: boolean; data?: unknown; error?: string }>('api_comfyui_system_stats', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
     });
     return result;
   },
 
-  async models(token: string): Promise<{ models: string[]; error?: string }> {
+  async models(adminUrl: string, token: string): Promise<{ models: string[]; error?: string }> {
     const result = await invoke<{ models: string[]; error?: string }>('api_comfyui_models', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
     });
     return result;
   },
 
-  async uploadImage(token: string, path: string): Promise<{ name: string; filename: string; error?: string }> {
+  async uploadImage(adminUrl: string, token: string, path: string): Promise<{ name: string; filename: string; error?: string }> {
     const result = await invoke<{ name: string; filename: string; error?: string }>('api_upload_image_to_comfyui', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
       path,
     });
     return result;
   },
 
-  async uploadToAdmin(token: string, fileData: number[], fileName: string, mimeType: string): Promise<{ id: number; path: string; url: string }> {
+  async uploadToAdmin(adminUrl: string, token: string, fileData: number[], fileName: string, mimeType: string): Promise<{ id: number; path: string; url: string }> {
     const result = await invoke<{ id: number; path: string; url: string }>('api_upload_to_admin', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
       fileData,
       fileName,
@@ -138,7 +138,7 @@ export const comfyUiProxy = {
     return result;
   },
 
-  async uploadWorkflowImage(token: string, fileData: number[], fileName: string, mimeType: string): Promise<{
+  async uploadWorkflowImage(adminUrl: string, token: string, fileData: number[], fileName: string, mimeType: string): Promise<{
     id: number;
     path: string;
     url: string;
@@ -160,7 +160,7 @@ export const comfyUiProxy = {
         type: string;
       };
     }>('api_upload_workflow_image', {
-      adminUrl: ADMIN_URL,
+      adminUrl,
       token,
       fileData,
       fileName,

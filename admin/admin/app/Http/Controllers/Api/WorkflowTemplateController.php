@@ -7,15 +7,8 @@ use App\Models\WorkflowTemplate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/**
- * 工作流模板管理控制器
- * 提供工作流的增删改查以及启动/停止功能
- */
 class WorkflowTemplateController extends Controller
 {
-    /**
-     * 类型到中文标签的映射
-     */
     private const TYPE_LABELS = [
         't2i' => '文生图',
         'i2i' => '图生图',
@@ -24,24 +17,16 @@ class WorkflowTemplateController extends Controller
         'other' => '其他',
     ];
 
-    /**
-     * 获取工作流列表（支持按类型筛选）
-     */
     public function index(Request $request): JsonResponse
     {
         $query = WorkflowTemplate::query();
 
-        // 只返回激活的工作流
-        $query->where('is_active', true);
-
-        // 按类型筛选
         if ($request->has('type') && $request->type) {
             $query->where('type', $request->type);
         }
 
         $workflows = $query->latest()->get();
 
-        // 格式化为 API 返回格式
         $formatted = $workflows->map(function ($workflow) {
             return [
                 'id' => $workflow->id,
@@ -50,8 +35,7 @@ class WorkflowTemplateController extends Controller
                 'type' => $workflow->type,
                 'category' => $workflow->type,
                 'category_label' => self::TYPE_LABELS[$workflow->type] ?? $workflow->type,
-                'description' => $workflow->description,
-                'thumb' => $workflow->thumb,
+                'description' => $workflow->name,
                 'version' => $workflow->version,
                 'is_active' => $workflow->is_active,
                 'parameter_schema' => $this->normalizeSchema($workflow->parameter_schema_json ?? []),
@@ -61,9 +45,6 @@ class WorkflowTemplateController extends Controller
         return response()->json($formatted);
     }
 
-    /**
-     * 获取单个工作流详情
-     */
     public function show(WorkflowTemplate $workflowTemplate): JsonResponse
     {
         return response()->json([
@@ -73,11 +54,30 @@ class WorkflowTemplateController extends Controller
             'type' => $workflowTemplate->type,
             'category' => $workflowTemplate->type,
             'category_label' => self::TYPE_LABELS[$workflowTemplate->type] ?? $workflowTemplate->type,
-            'description' => $workflowTemplate->description,
-            'thumb' => $workflowTemplate->thumb,
+            'description' => $workflowTemplate->name,
             'version' => $workflowTemplate->version,
             'workflow_json' => $workflowTemplate->definition_json,
             'parameter_schema' => $this->normalizeSchema($workflowTemplate->parameter_schema_json ?? []),
+        ]);
+    }
+
+    public function start(WorkflowTemplate $workflowTemplate): JsonResponse
+    {
+        $workflowTemplate->update(['is_active' => true]);
+
+        return response()->json([
+            'message' => '工作流已启动',
+            'is_active' => true,
+        ]);
+    }
+
+    public function stop(WorkflowTemplate $workflowTemplate): JsonResponse
+    {
+        $workflowTemplate->update(['is_active' => false]);
+
+        return response()->json([
+            'message' => '工作流已停止',
+            'is_active' => false,
         ]);
     }
 
@@ -88,7 +88,6 @@ class WorkflowTemplateController extends Controller
             if (json_last_error() === JSON_ERROR_NONE) {
                 return $this->normalizeSchema($decoded);
             }
-
             return [];
         }
 
@@ -114,31 +113,5 @@ class WorkflowTemplateController extends Controller
         }
 
         return $normalized;
-}
-
-    /**
-     * 启动工作流
-     */
-    public function start(WorkflowTemplate $workflowTemplate): JsonResponse
-    {
-        $workflowTemplate->update(['is_active' => true]);
-
-        return response()->json([
-            'message' => '工作流已启动',
-            'is_active' => true,
-        ]);
-    }
-
-    /**
-     * 停止工作流
-     */
-    public function stop(WorkflowTemplate $workflowTemplate): JsonResponse
-    {
-        $workflowTemplate->update(['is_active' => false]);
-
-        return response()->json([
-            'message' => '工作流已停止',
-            'is_active' => false,
-        ]);
     }
 }

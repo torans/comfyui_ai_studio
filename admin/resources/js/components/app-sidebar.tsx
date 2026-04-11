@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid, Workflow } from 'lucide-react';
+import { BookOpen, FolderGit2, LayoutGrid, Users, Workflow } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -21,6 +21,11 @@ const mainNavItems: NavItem[] = [
         title: '控制面板',
         href: dashboard(),
         icon: LayoutGrid,
+    },
+    {
+        title: '员工管理',
+        href: '/admin/employees',
+        icon: Users,
     },
     {
         title: '工作流管理',
