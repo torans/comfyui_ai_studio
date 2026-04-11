@@ -1,4 +1,3 @@
-import React from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 
@@ -46,7 +45,7 @@ export function ThemeToggle() {
         ))}
       </div>
       
-      <style jsx>{`
+      <style>{`
         .theme-toggle {
           background: var(--card-bg);
           border: 1px solid var(--border-color);

@@ -4,11 +4,9 @@ import {
   Zap,
   Play,
   Loader2,
-  Menu,
   Download,
   ZoomIn,
   ZoomOut,
-  Maximize2,
   Maximize,
   Sparkles,
   LogOut,
@@ -503,7 +501,6 @@ const DynamicWorkflowView = () => {
               ) : isUploadField(p.type) ? (
                 <ImageUploadField
                   accept={p.accept}
-                  field={p.field}
                   label={p.label}
                   onChange={(file) => setFormData((prev) => ({ ...prev, [inputKey]: file }))}
                   placeholder={p.placeholder}
@@ -580,14 +577,13 @@ const DynamicWorkflowView = () => {
 
 type ImageUploadFieldProps = {
   accept?: string;
-  field: string;
   label: string;
   onChange: (file: File | null) => void;
   placeholder?: string;
   value?: File | null;
 };
 
-const ImageUploadField = ({ accept, field, label, onChange, placeholder, value }: ImageUploadFieldProps) => {
+const ImageUploadField = ({ accept, label, onChange, placeholder, value }: ImageUploadFieldProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);

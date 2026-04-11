@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GenerationJob, WorkflowTemplate, ParameterSchema } from './api';
+import { GenerationJob, WorkflowTemplate } from './api';
 
 type ThemeMode = 'light' | 'dark' | 'auto';
 

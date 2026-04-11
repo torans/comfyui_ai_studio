@@ -36,18 +36,6 @@ export function useTheme() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', effectiveTheme);
     document.documentElement.classList.toggle('dark', effectiveTheme === 'dark');
-    
-    // 更新 Tauri 窗口主题（如果支持）
-    if (window.__TAURI__) {
-      try {
-        import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-          const win = getCurrentWindow();
-          // 可以在这里设置窗口主题相关属性
-        });
-      } catch (error) {
-        console.log('Tauri API not available');
-      }
-    }
   }, [effectiveTheme]);
 
   return {
