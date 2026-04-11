@@ -12,6 +12,8 @@ jobs:
   build-desktop:
     name: Build ${{ matrix.platform.name }} Bundle
     runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -49,6 +51,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Beikuman AI Studio {0}', github.ref_name) || '' }}
+          releaseBody: ${{ startsWith(github.ref, 'refs/tags/v') && 'Desktop installers for Beikuman AI Studio.' || '' }}
+          generateReleaseNotes: ${{ startsWith(github.ref, 'refs/tags/v') }}
           args: ""
 
       - name: Upload bundles
