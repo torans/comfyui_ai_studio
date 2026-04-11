@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Beikuman ComfyUI",
-  "version": "0.1.0",
+  "productName": "Beikuman AI Studio",
+  "version": "1.0.3",
   "identifier": "com.beikuman.comfyui",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -12,23 +12,16 @@
   "app": {
     "windows": [
       {
-        "title": "Beikuman ComfyUI Client",
+        "title": "Beikuman AI Studio",
         "width": 1200,
         "height": 850,
         "resizable": true,
         "transparent": false,
-        "decorations": true,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "trafficLightPosition": {
-          "x": 14,
-          "y": 14
-        }
+        "decorations": true
       }
     ],
-    "macOSPrivateApi": true,
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://admin.test https://admin.test ws://admin.test:8080 http://localhost:8000 ws://localhost:8080 http://127.0.0.1:8000 ws://127.0.0.1:8080 http://comfyui.lanqiu.tech https://comfyui.lanqiu.tech ws://comfyui.lanqiu.tech wss://comfyui.lanqiu.tech; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' http: https: ws: wss:; img-src 'self' data: blob: http: https:; media-src 'self' blob: http: https:; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {

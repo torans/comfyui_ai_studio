@@ -22,7 +22,6 @@ import {
   EyeOff,
   X,
 } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStore } from "./store";
 import { auth, generationJobs, workflowTemplates, comfyUiProxy, WorkflowTemplate, GenerationJob } from "./api";
 import { listenToJobStatus } from "./echo";
@@ -250,10 +249,6 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <div className="custom-titlebar" onMouseDown={(e) => { if (e.buttons === 1) getCurrentWindow().startDragging(); }}>
-        <div className="titlebar-title">Beikuman AI Studio</div>
-      </div>
-      
       <div className="app-body">
         {/* 1. 一级主侧边栏 (分类列表) */}
         <aside className="main-sidebar">
@@ -524,7 +519,7 @@ const DynamicWorkflowView = () => {
         <div className="action-bar">
           <button className="main-exec-btn" disabled={generating} onClick={handleGenerate}>
             {generating ? <Loader2 className="spinning" /> : <Play fill="currentColor" size={16} />}
-            <span>{generating ? `生成中 (${progress}%)` : "开始生成"}</span>
+            <span>{generating ? "生成中" : "开始生成"}</span>
           </button>
         </div>
       </section>
@@ -567,7 +562,6 @@ const DynamicWorkflowView = () => {
            <div className="full-center-state">
              <div className="pulse-orb">
                <Sparkles size={64} className="spinning-slow" />
-               <div className="prog-val">{progress}%</div>
              </div>
              <h3>画师正在潜心创作...</h3>
              <p>{progressMessage}</p>
@@ -1074,7 +1068,7 @@ const Lightbox = ({ items, onClose, title, workflowType, onToast }: { items: Med
     );
 };
 
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "1.0.3";
 
 const SettingsView = () => {
     const { user, logout, theme, setTheme, serverUrl, isConnected } = useStore();
