@@ -26,14 +26,14 @@ jobs:
               src-tauri/target/release/bundle/nsis/*.exe
               src-tauri/target/release/bundle/msi/*.msi
           - name: macOS Intel
-            runner: macos-13
+            runner: macos-latest
             artifact_name: beikuman-ai-studio-macos-intel
             rust_target: x86_64-apple-darwin
             artifact_paths: |
               src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
               src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
           - name: macOS Apple Silicon
-            runner: macos-14
+            runner: macos-latest
             artifact_name: beikuman-ai-studio-macos-apple-silicon
             rust_target: aarch64-apple-darwin
             artifact_paths: |
