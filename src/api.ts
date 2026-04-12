@@ -39,6 +39,73 @@ export interface WorkflowTemplate {
   parameter_schema: ParameterSchema[];
 }
 
+export interface GenerationJob {
+  id: number;
+  type: string;
+  status: string;
+  workflow_template_id: number;
+  workflow_code?: string;
+  workflow_name?: string;
+  input_json?: Record<string, unknown>;
+  error_message?: string;
+  started_at?: string;
+  finished_at?: string;
+  created_at: string;
+  updated_at: string;
+  progress?: number;
+  message?: string;
+  assets?: Array<{
+    id: number;
+    type: string;
+    media_kind?: "image" | "video";
+    filename: string;
+    url: string;
+  }>;
+}
+
+type GenerationJobAsset = NonNullable<GenerationJob["assets"]>[number];
+
+type GenerationJobDetailResponse = {
+  job_id: number;
+  workflow_id?: number;
+  workflow_name?: string;
+  workflow_code?: string;
+  category?: string;
+  status: string;
+  inputs?: Record<string, unknown>;
+  error_message?: string;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  progress?: number;
+  message?: string;
+  assets?: GenerationJobAsset[];
+};
+
+function normalizeGenerationJobDetail(job: GenerationJob | GenerationJobDetailResponse): GenerationJob {
+  if ("id" in job) {
+    return job;
+  }
+
+  return {
+    id: job.job_id,
+    type: job.category ?? "",
+    status: job.status,
+    workflow_template_id: job.workflow_id ?? 0,
+    workflow_code: job.workflow_code,
+    workflow_name: job.workflow_name,
+    input_json: job.inputs,
+    error_message: job.error_message,
+    started_at: job.started_at,
+    finished_at: job.finished_at,
+    created_at: job.created_at,
+    updated_at: job.finished_at ?? job.started_at ?? job.created_at,
+    progress: job.progress,
+    message: job.message,
+    assets: job.assets,
+  };
+}
+
 // 认证 API - 通过 Tauri 命令
 export const auth = {
   async login(adminUrl: string, email: string, password: string): Promise<LoginResponse> {
@@ -91,12 +158,12 @@ export const generationJobs = {
   },
 
   async get(adminUrl: string, token: string, jobId: number): Promise<GenerationJob> {
-    const result = await invoke<GenerationJob>('api_get_job', {
+    const result = await invoke<GenerationJob | GenerationJobDetailResponse>('api_get_job', {
       adminUrl,
       token,
       jobId,
     });
-    return result;
+    return normalizeGenerationJobDetail(result);
   },
 };
 
@@ -177,27 +244,3 @@ export const comfyUiProxy = {
     return result;
   },
 };
-
-export interface GenerationJob {
-  id: number;
-  type: string;
-  status: string;
-  workflow_template_id: number;
-  workflow_code?: string;
-  workflow_name?: string;
-  input_json?: Record<string, unknown>;
-  error_message?: string;
-  started_at?: string;
-  finished_at?: string;
-  created_at: string;
-  updated_at: string;
-  progress?: number;
-  message?: string;
-  assets?: Array<{
-    id: number;
-    type: string;
-    media_kind?: "image" | "video";
-    filename: string;
-    url: string;
-  }>;
-}

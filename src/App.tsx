@@ -209,16 +209,20 @@ export default function App() {
           if (result.data.length > 0) {
             if (!store.selectedWorkflowId) store.setSelectedWorkflowId(result.data[0].id);
           }
-
-          if (store.user?.id) {
-            listenToJobStatus(store.token!, store.user.id, store.serverUrl, (data) => {
-              store.updateJob(data.id, data);
-            });
-          }
         } catch (err) { console.error("初始化失败:", err); }
       };
       initData();
     }
+  }, [store.isAuthenticated, store.token, store.selectedWorkflowId, store.serverUrl]);
+
+  useEffect(() => {
+    if (!store.isAuthenticated || !store.token || !store.user?.id) return;
+
+    const unsubscribe = listenToJobStatus(store.token, store.user.id, store.serverUrl, (data) => {
+      store.updateJob(data.id, data);
+    });
+
+    return unsubscribe;
   }, [store.isAuthenticated, store.token, store.user?.id, store.serverUrl]);
 
   useEffect(() => {
@@ -352,7 +356,7 @@ export default function App() {
 
 // ── Dynamic Workflow View ───────────────────────────────────────────────────
 const DynamicWorkflowView = () => {
-  const { token, workflows, selectedWorkflowId, serverUrl } = useStore();
+  const { token, workflows, selectedWorkflowId, serverUrl, updateJob } = useStore();
   const currentWorkflow = workflows.find(w => w.id === selectedWorkflowId);
   
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -417,6 +421,33 @@ const DynamicWorkflowView = () => {
       if (newProg > progress) setProgress(newProg);
     }
   }, [currentJob?.status, currentJob?.progress, currentJob?.assets, progress]);
+
+  useEffect(() => {
+    if (!generating || !currentJobId || !token) return;
+    if (currentJob?.status === "succeeded" || currentJob?.status === "failed") return;
+
+    let cancelled = false;
+
+    const refreshJob = async () => {
+      try {
+        const latestJob = await generationJobs.get(serverUrl, token, currentJobId);
+        if (cancelled) return;
+        updateJob(currentJobId, latestJob);
+      } catch (err) {
+        if (!cancelled) {
+          console.error("任务状态兜底刷新失败:", err);
+        }
+      }
+    };
+
+    refreshJob();
+    const timer = window.setInterval(refreshJob, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [generating, currentJobId, currentJob?.status, serverUrl, token, updateJob]);
 
   useEffect(() => {
     if (!toastState) return;
