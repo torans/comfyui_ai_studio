@@ -24,6 +24,7 @@ interface AppState {
   isConnected: boolean;
   checkpoints: string[];
   selectedModel: string;
+  devtoolsEnabled: boolean;
 
   // Workflow state
   workflows: WorkflowTemplate[];
@@ -47,6 +48,7 @@ interface AppState {
   setConnected: (status: boolean) => void;
   setCheckpoints: (list: string[]) => void;
   setSelectedModel: (model: string) => void;
+  setDevtoolsEnabled: (enabled: boolean) => void;
 
   // Workflow actions
   setWorkflows: (workflows: WorkflowTemplate[]) => void;
@@ -65,6 +67,7 @@ const storedToken = storage?.getItem('auth_token') ?? null;
 const storedUser = storage?.getItem('auth_user') ?? null;
 const storedTheme = (storage?.getItem('app_theme') as ThemeMode | null) ?? 'auto';
 const storedServerUrl = storage?.getItem('server_url') ?? 'http://admin.test';
+const storedDevtools = storage?.getItem('devtools_enabled') === 'true';
 
 export const useStore = create<AppState>((set) => ({
   // Auth state
@@ -80,6 +83,7 @@ export const useStore = create<AppState>((set) => ({
   isConnected: false,
   checkpoints: [],
   selectedModel: '',
+  devtoolsEnabled: storedDevtools,
 
   // Workflow state
   workflows: [],
@@ -134,6 +138,10 @@ export const useStore = create<AppState>((set) => ({
   setConnected: (status: boolean) => set({ isConnected: status }),
   setCheckpoints: (list: string[]) => set({ checkpoints: list }),
   setSelectedModel: (model: string) => set({ selectedModel: model }),
+  setDevtoolsEnabled: (enabled: boolean) => {
+    storage?.setItem('devtools_enabled', String(enabled));
+    set({ devtoolsEnabled: enabled });
+  },
 
   // Workflow actions
   setWorkflows: (workflows: WorkflowTemplate[]) => set({ workflows }),

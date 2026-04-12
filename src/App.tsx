@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useId, type DragEvent } from "react";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   Image as ImageIcon,
   Zap,
@@ -1120,7 +1121,7 @@ const Lightbox = ({ items, onClose, title, workflowType, onToast }: { items: Med
 const APP_VERSION = "1.0.3";
 
 const SettingsView = () => {
-    const { user, logout, theme, setTheme, serverUrl, isConnected } = useStore();
+    const { user, logout, theme, setTheme, serverUrl, isConnected, devtoolsEnabled, setDevtoolsEnabled } = useStore();
     const { effectiveTheme, systemTheme } = useTheme();
     const themeOptions = [
         { value: "light", label: "浅色" },
@@ -1280,6 +1281,48 @@ const SettingsView = () => {
                                 <LogOut size={16} />
                                 <span>退出登录</span>
                             </button>
+                        </div>
+                    </section>
+
+                    <section className="settings-group">
+                        <div className="settings-group-head">
+                            <div className="settings-card-title">
+                                <span className="settings-section-kicker">调试</span>
+                                <h2>开发者工具</h2>
+                            </div>
+                            <div className="settings-icon-shell soft">
+                                <Settings2 size={20} />
+                            </div>
+                        </div>
+
+                        <div className="settings-list">
+                            <div className="settings-list-row align-center">
+                                <span className="settings-row-label">启用 DevTools</span>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={devtoolsEnabled}
+                                    className={`settings-toggle ${devtoolsEnabled ? "active" : ""}`}
+                                    onClick={async () => {
+                                        const next = !devtoolsEnabled;
+                                        setDevtoolsEnabled(next);
+                                        if (next) {
+                                            try {
+                                                const mainWindow = new WebviewWindow("main", {});
+                                                await mainWindow.openDevtools();
+                                            } catch (e) {
+                                                console.warn("DevTools not available:", e);
+                                            }
+                                        }
+                                    }}
+                                >
+                                    <span className="settings-toggle-thumb" />
+                                </button>
+                            </div>
+                            <div className="settings-list-row">
+                                <span className="settings-row-label">说明</span>
+                                <strong>开启后可在窗口中打开浏览器开发者工具，用于检查网络请求与调试前端代码。</strong>
+                            </div>
                         </div>
                     </section>
                 </div>
