@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useId, type DragEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   Image as ImageIcon,
   Zap,
@@ -27,6 +28,7 @@ import { listenToJobStatus } from "./echo";
 import { useTheme } from "./hooks/useTheme";
 import { useVideoPoster } from "./hooks/useVideoPoster";
 import VideoPlayer from "./components/VideoPlayer";
+import packageJson from "../package.json";
 import "./App.css";
 
 type Tab = "Workflow" | "Jobs" | "Settings";
@@ -1149,16 +1151,37 @@ const Lightbox = ({ items, onClose, title, workflowType, onToast }: { items: Med
     );
 };
 
-const APP_VERSION = "1.0.3";
+const FALLBACK_APP_VERSION = packageJson.version;
 
 const SettingsView = () => {
     const { user, logout, theme, setTheme, serverUrl, isConnected, devtoolsEnabled, setDevtoolsEnabled } = useStore();
     const { effectiveTheme, systemTheme } = useTheme();
+    const [appVersion, setAppVersion] = useState(FALLBACK_APP_VERSION);
     const themeOptions = [
         { value: "light", label: "浅色" },
         { value: "dark", label: "深色" },
         { value: "auto", label: "跟随系统" },
     ] as const;
+
+    useEffect(() => {
+        let cancelled = false;
+
+        getVersion()
+            .then((version) => {
+                if (!cancelled && version) {
+                    setAppVersion(version);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setAppVersion(FALLBACK_APP_VERSION);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     return (
         <div className="settings-panel">
@@ -1173,7 +1196,7 @@ const SettingsView = () => {
                         <span className="settings-connection-dot" />
                         {isConnected ? "服务在线" : "服务离线"}
                     </span>
-                    <span className="settings-version-pill">v{APP_VERSION}</span>
+                    <span className="settings-version-pill">v{appVersion}</span>
                 </div>
             </header>
 
@@ -1288,7 +1311,7 @@ const SettingsView = () => {
                         <div className="settings-list">
                             <div className="settings-list-row">
                                 <span className="settings-row-label">当前版本</span>
-                                <strong>v{APP_VERSION}</strong>
+                                <strong>v{appVersion}</strong>
                             </div>
                             <div className="settings-list-row align-top">
                                 <span className="settings-row-label">技术支持</span>
