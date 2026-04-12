@@ -505,11 +505,21 @@ async fn api_download_remote_media(
     }))
 }
 
+#[tauri::command]
+async fn open_devtools(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.open_devtools();
+        Ok(())
+    } else {
+        Err("Main window not found".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![send_comfy_prompt, get_comfy_models, api_login, api_get_workflows, api_create_job, api_get_jobs, api_get_job, api_comfyui_system_stats, api_comfyui_models, api_upload_image_to_comfyui, api_upload_to_admin, api_upload_workflow_image, api_download_remote_media])
+        .invoke_handler(tauri::generate_handler![send_comfy_prompt, get_comfy_models, api_login, api_get_workflows, api_create_job, api_get_jobs, api_get_job, api_comfyui_system_stats, api_comfyui_models, api_upload_image_to_comfyui, api_upload_to_admin, api_upload_workflow_image, api_download_remote_media, open_devtools])
         .setup(|_app| {
             Ok(())
         })

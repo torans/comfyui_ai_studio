@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useId, type DragEvent } from "react";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Image as ImageIcon,
   Zap,
@@ -1308,8 +1308,7 @@ const SettingsView = () => {
                                         setDevtoolsEnabled(next);
                                         if (next) {
                                             try {
-                                                const mainWindow = new WebviewWindow("main", {});
-                                                await mainWindow.openDevtools();
+                                                await invoke("open_devtools");
                                             } catch (e) {
                                                 console.warn("DevTools not available:", e);
                                             }
