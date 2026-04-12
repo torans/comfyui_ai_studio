@@ -29,6 +29,8 @@ import VideoPlayer from "./components/VideoPlayer";
 import "./App.css";
 
 type Tab = "Workflow" | "Jobs" | "Settings";
+const INITIAL_VISIBLE_JOB_COUNT = 24;
+const JOB_RENDER_BATCH_SIZE = 24;
 
 const isUploadField = (type?: string) => type === "image" || type === "upload";
 
@@ -194,7 +196,6 @@ export default function App() {
   useTheme();
   const store = useStore();
   const [activeTab, setActiveTab] = useState<Tab>("Workflow");
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [isConnected, setConnected] = useState(false);
 
   // 初始化获取工作流
@@ -206,8 +207,6 @@ export default function App() {
           store.setWorkflows(result.data);
           
           if (result.data.length > 0) {
-            const firstCat = result.data[0].category;
-            setSelectedCategory(firstCat);
             if (!store.selectedWorkflowId) store.setSelectedWorkflowId(result.data[0].id);
           }
 
@@ -244,78 +243,105 @@ export default function App() {
     acc[cat].items.push(w);
     return acc;
   }, {} as Record<string, { label: string, items: WorkflowTemplate[] }>);
+  const workflowGroups = Object.entries(workflowsByCategory);
 
   return (
     <div className="app-container">
       <div className="app-body">
-        {/* 1. 一级主侧边栏 (分类列表) */}
-        <aside className="main-sidebar">
-          <div className="sidebar-logo"><Sparkles size={24} /></div>
-          
-          <nav className="category-nav">
-            {Object.entries(workflowsByCategory).map(([id, category]) => (
-              <button 
-                key={id}
-                className={`cat-item ${selectedCategory === id && activeTab === "Workflow" ? "active" : ""}`}
-                onClick={() => { setSelectedCategory(id); setActiveTab("Workflow"); }}
-              >
-                {id.includes('video') ? <Video size={20} /> : id.includes('i2i') ? <ImageIcon size={20} /> : <Zap size={20} />}
-                <span>{category.label}</span>
-              </button>
-            ))}
-            
-            <div className="nav-divider" />
-            
-            <button className={`cat-item ${activeTab === "Jobs" ? "active" : ""}`} onClick={() => setActiveTab("Jobs")}>
-              <Clock size={20} /><span>任务记录</span>
-            </button>
-          </nav>
-
-          <div className="sidebar-footer">
-            <button className={`cat-item ${activeTab === "Settings" ? "active" : ""}`} onClick={() => setActiveTab("Settings")}>
-              <Settings2 size={20} />
-            </button>
-            <div className={`status-indicator ${isConnected ? "online" : ""}`} />
-          </div>
-        </aside>
-
-        {/* 2. 次级侧边栏 (当前分类下的所有工作流) */}
         {activeTab === "Workflow" && (
-          <aside className="sub-sidebar">
-            <div className="sub-header">
-              <div className="sub-header-copy">
-                <h3>{workflowsByCategory[selectedCategory]?.label || "选择分类"}</h3>
-                <span className="sub-header-meta">
-                  共 {workflowsByCategory[selectedCategory]?.items.length || 0} 个小应用
-                </span>
+          <aside className="workflow-browser" role="navigation" aria-label="工作流浏览">
+            <div className="workflow-browser-header">
+              <div className="workflow-browser-copy">
+                {/* <span className="workflow-browser-kicker">BEIKUMAN AI tools</span> */}
+                <h2>AI创作中心</h2>
               </div>
             </div>
-            <div className="workflow-list">
-              {workflowsByCategory[selectedCategory]?.items.map(w => (
-                <button 
-                  key={w.id} 
-                  className={`workflow-item ${store.selectedWorkflowId === w.id ? 'active' : ''}`}
-                  onClick={() => store.setSelectedWorkflowId(w.id)}
-                >
-                  <div className="workflow-item-main">
-                    <WorkflowThumb workflow={w} compact />
-                    <div className="w-copy-group">
-                      <div className="w-label-group">
-                        <span className="w-name">{w.name}</span>
-                        <span className="w-ver">{w.version}</span>
-                      </div>
-                      <span className="w-desc">{w.description || "未填写工作流描述"}</span>
+
+            <div className="workflow-browser-scroller">
+              {workflowGroups.map(([id, category]) => (
+                <section key={id} className="workflow-cluster">
+                  <header className="workflow-cluster-header">
+                    <div className="workflow-cluster-copy">
+                      <span className="workflow-cluster-title">{category.label}</span>
+                      <span className="workflow-cluster-meta">共 {category.items.length} 个可用工具</span>
                     </div>
+                  </header>
+
+                  <div className="workflow-browser-grid">
+                    {category.items.map((w) => (
+                      <button
+                        key={w.id}
+                        className={`workflow-browser-card ${store.selectedWorkflowId === w.id ? "active" : ""}`}
+                        onClick={() => {
+                          store.setSelectedWorkflowId(w.id);
+                          setActiveTab("Workflow");
+                        }}
+                      >
+                        <div className="workflow-browser-card-visual">
+                          <span className="workflow-browser-card-accent" aria-hidden="true" />
+                          <WorkflowThumb workflow={w} />
+                          <span className="workflow-browser-card-pulse" aria-hidden="true" />
+                        </div>
+
+                        <div className="workflow-browser-card-copy">
+                          <div className="workflow-browser-card-topline">
+                            <span className="workflow-browser-card-name">{w.name}</span>
+                            <ChevronRight size={14} className="workflow-browser-card-arrow" />
+                          </div>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                  <ChevronRight size={14} className="w-arrow" />
-                </button>
+                </section>
               ))}
             </div>
           </aside>
         )}
 
-        {/* 3. 主内容区 */}
         <main className="main-content">
+          <header className="workspace-topbar">
+            <div className="workspace-topbar-copy">
+              {/* <span className="workspace-topbar-kicker">
+                {activeTab === "Workflow" ? "Creative Ops" : activeTab === "Jobs" ? "Generation Timeline" : "System Preferences"}
+              </span>
+              <h1>
+                {activeTab === "Workflow" ? "工作流控制台" : activeTab === "Jobs" ? "任务记录" : "系统设置"}
+              </h1> */}
+            </div>
+
+            <div className="workspace-topbar-actions">
+              <button
+                className={`workspace-action-btn ${activeTab === "Workflow" ? "active" : ""}`}
+                onClick={() => setActiveTab("Workflow")}
+                aria-label="创作"
+                type="button"
+              >
+                <Sparkles size={16} />
+                <span>创作</span>
+              </button>
+
+              <button
+                className={`workspace-action-btn ${activeTab === "Jobs" ? "active" : ""}`}
+                onClick={() => setActiveTab("Jobs")}
+                aria-label="任务记录"
+                type="button"
+              >
+                <Clock size={16} />
+                <span>任务记录</span>
+              </button>
+
+              <button
+                className={`workspace-action-btn ${activeTab === "Settings" ? "active" : ""}`}
+                onClick={() => setActiveTab("Settings")}
+                aria-label="设置"
+                type="button"
+              >
+                <Settings2 size={16} />
+                <span>设置</span>
+              </button>
+            </div>
+          </header>
+
           {activeTab === "Workflow" ? <DynamicWorkflowView /> : 
            activeTab === "Jobs" ? <JobsView /> : <SettingsView />}
         </main>
@@ -465,10 +491,18 @@ const DynamicWorkflowView = () => {
           <div className="workflow-headline">
             <WorkflowThumb workflow={currentWorkflow} />
             <div className="workflow-headline-copy">
-              <h2>{currentWorkflow.name}</h2>
+              <div className="workflow-headline-topline">
+                <h2>{currentWorkflow.name}</h2>
+                <span className="workflow-version-pill">v{currentWorkflow.version}</span>
+              </div>
               {currentWorkflow.description ? (
                 <p className="workflow-headline-desc">{currentWorkflow.description}</p>
               ) : null}
+              <div className="workflow-meta-panel">
+                <span className="workflow-meta-chip">{currentWorkflow.category_label || "工作流"}</span>
+                <span className="workflow-meta-divider" aria-hidden="true" />
+                <span className="workflow-meta-text">{schema.length > 0 ? `${schema.length} 个可调参数` : "一键直出工作流"}</span>
+              </div>
             </div>
           </div>
         </header>
@@ -565,6 +599,9 @@ const DynamicWorkflowView = () => {
            </div>
         ) : (
            <div className="full-center-state">
+              <div className="empty-state-orbit empty-state-orbit-a" aria-hidden="true" />
+              <div className="empty-state-orbit empty-state-orbit-b" aria-hidden="true" />
+              <div className="empty-state-grid" aria-hidden="true" />
               <Zap size={64} className="faint-icon" />
               <h3>工作流就绪</h3>
               {schema.length > 0 ? <p>请在左侧配置参数并点击开始生成</p> : <p>此工作流属于全自动化流程，可直接点击开始生成</p>}
@@ -869,6 +906,7 @@ const JobsView = () => {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loading, setLoading] = useState(false);
+    const [visibleJobCount, setVisibleJobCount] = useState(INITIAL_VISIBLE_JOB_COUNT);
     const [viewerJob, setViewerJob] = useState<GenerationJob | null>(null);
     const [toastState, setToastState] = useState<{ title: string; message: string } | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -882,6 +920,7 @@ const JobsView = () => {
             const newList = res.data;
             if (reset) {
                 setJobs(newList);
+                setVisibleJobCount(INITIAL_VISIBLE_JOB_COUNT);
             } else {
                 setJobs([...jobs, ...newList]);
             }
@@ -896,10 +935,20 @@ const JobsView = () => {
 
     useEffect(() => { loadMore(true); }, [token]);
 
+    const visibleJobs = jobs.slice(0, visibleJobCount);
+
+    const revealMoreJobs = () => {
+        setVisibleJobCount((current) => Math.min(current + JOB_RENDER_BATCH_SIZE, jobs.length));
+    };
+
     const handleScroll = () => {
         if (!scrollRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
         if (scrollHeight - scrollTop <= clientHeight + 100) {
+            if (visibleJobCount < jobs.length) {
+                revealMoreJobs();
+                return;
+            }
             loadMore();
         }
     };
@@ -932,8 +981,13 @@ const JobsView = () => {
             
             <div className="jobs-scroller" ref={scrollRef} onScroll={handleScroll}>
                 <div className="jobs-masonry">
-                    {jobs.map(j => (
-                        <div key={j.id} className={`job-card ${j.status}`} onClick={() => j.status === 'succeeded' && setViewerJob(j)}>
+                    {visibleJobs.map(j => (
+                        <div
+                            key={j.id}
+                            className={`job-card ${j.status}`}
+                            data-testid="job-card"
+                            onClick={() => j.status === 'succeeded' && setViewerJob(j)}
+                        >
                             <div className="job-thumb">
                                 {getOutputMedia(j)[0] ? (
                                     resolveMediaKind(getOutputMedia(j)[0], j.type) === "video" ? (

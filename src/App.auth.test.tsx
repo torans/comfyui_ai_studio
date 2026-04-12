@@ -107,7 +107,7 @@ describe("App auth flow", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Beikuman AI Studio")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "创作" })).toBeInTheDocument();
     });
 
     expect(console.error).not.toHaveBeenCalledWith(

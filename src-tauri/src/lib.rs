@@ -105,6 +105,7 @@ async fn api_login(admin_url: String, email: String, password: String) -> Result
 
     let response = client
         .post(&full_url)
+        .header("Accept", "application/json")
         .json(&payload)
         .send()
         .await
