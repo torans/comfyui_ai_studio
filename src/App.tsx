@@ -196,7 +196,6 @@ export default function App() {
   useTheme();
   const store = useStore();
   const [activeTab, setActiveTab] = useState<Tab>("Workflow");
-  const [isConnected, setConnected] = useState(false);
 
   // 初始化获取工作流
   useEffect(() => {
@@ -226,13 +225,13 @@ export default function App() {
      const check = async () => {
         try {
           const res = await comfyUiProxy.systemStats(store.serverUrl, store.token!);
-          setConnected(res.online);
-        } catch { setConnected(false); }
+          store.setConnected(res.online);
+        } catch { store.setConnected(false); }
      };
      check();
      const timer = setInterval(check, 10000);
      return () => clearInterval(timer);
-  }, [store.token, store.serverUrl]);
+  }, [store, store.token, store.serverUrl]);
 
   if (!store.isAuthenticated) return <div className="app-container"><LoginView /></div>;
 
