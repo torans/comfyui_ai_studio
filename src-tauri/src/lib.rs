@@ -16,6 +16,18 @@ struct LoginRequest {
     password: String,
 }
 
+fn build_direct_client(timeout_secs: Option<u64>) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder().no_proxy();
+
+    if let Some(timeout_secs) = timeout_secs {
+        builder = builder.timeout(std::time::Duration::from_secs(timeout_secs));
+    }
+
+    builder
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))
+}
+
 #[tauri::command]
 async fn send_comfy_prompt(server_url: String, prompt: serde_json::Value, client_id: String) -> Result<serde_json::Value, String> {
     // 1. Normalize server URL (remove trailing slashes)
@@ -25,10 +37,7 @@ async fn send_comfy_prompt(server_url: String, prompt: serde_json::Value, client
     println!(">>> Sending prompt to ComfyUI: {}", full_url);
     println!(">>> Client ID: {}", client_id);
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    let client = build_direct_client(Some(30))?;
 
     // Log the actual model being used for debugging
     if let Some(ckpt) = prompt.pointer("/4/inputs/ckpt_name") {
@@ -67,7 +76,7 @@ async fn send_comfy_prompt(server_url: String, prompt: serde_json::Value, client
 #[tauri::command]
 async fn get_comfy_models(server_url: String) -> Result<Vec<String>, String> {
     let base_url = server_url.trim_end_matches('/');
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
     let url = format!("{}/object_info", base_url);
 
     let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
@@ -96,10 +105,7 @@ async fn api_login(admin_url: String, email: String, password: String) -> Result
 
     println!(">>> Login request to: {}", full_url);
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    let client = build_direct_client(Some(30))?;
 
     let payload = LoginRequest { email, password };
 
@@ -133,7 +139,7 @@ async fn api_get_workflows(admin_url: String, token: String) -> Result<serde_jso
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/workflow-templates", base_url);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
 
     let response = client
         .get(&full_url)
@@ -156,7 +162,7 @@ async fn api_create_job(admin_url: String, token: String, workflow_id: u32, inpu
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/generation-jobs", base_url);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
 
     let mut payload = serde_json::json!({
         "workflow_id": workflow_id,
@@ -190,7 +196,7 @@ async fn api_get_jobs(admin_url: String, token: String) -> Result<serde_json::Va
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/generation-jobs", base_url);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
 
     let response = client
         .get(&full_url)
@@ -212,7 +218,7 @@ async fn api_get_job(admin_url: String, token: String, job_id: u32) -> Result<se
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/generation-jobs/{}", base_url, job_id);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
 
     let response = client
         .get(&full_url)
@@ -234,7 +240,7 @@ async fn api_comfyui_system_stats(admin_url: String, token: String) -> Result<se
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/comfyui/system-stats", base_url);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
 
     let response = client
         .get(&full_url)
@@ -256,7 +262,7 @@ async fn api_comfyui_models(admin_url: String, token: String) -> Result<serde_js
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/comfyui/models", base_url);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
 
     let response = client
         .get(&full_url)
@@ -278,7 +284,7 @@ async fn api_upload_image_to_comfyui(admin_url: String, token: String, path: Str
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/comfyui/upload-image", base_url);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
 
     let payload = serde_json::json!({
         "path": path
@@ -306,7 +312,7 @@ async fn api_upload_to_admin(admin_url: String, token: String, file_data: Vec<u8
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/uploads/images", base_url);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(None)?;
 
     let part = reqwest::multipart::Part::bytes(file_data)
         .file_name(file_name)
