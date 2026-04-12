@@ -26,19 +26,23 @@ jobs:
               src-tauri/target/release/bundle/nsis/*.exe
               src-tauri/target/release/bundle/msi/*.msi
           - name: macOS Intel
-            runner: macos-latest
+            runner: macos-13
             artifact_name: beikuman-ai-studio-macos-intel
             rust_target: x86_64-apple-darwin
             artifact_paths: |
               src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
               src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/release/bundle/dmg/*_x64.dmg
+              src-tauri/target/release/bundle/macos/*.app.tar.gz
           - name: macOS Apple Silicon
-            runner: macos-latest
+            runner: macos-14
             artifact_name: beikuman-ai-studio-macos-apple-silicon
             rust_target: aarch64-apple-darwin
             artifact_paths: |
               src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
               src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/release/bundle/dmg/*_aarch64.dmg
+              src-tauri/target/release/bundle/macos/*.app.tar.gz
 
     steps:
       - name: Checkout
