@@ -344,7 +344,7 @@ async fn api_upload_workflow_image(admin_url: String, token: String, file_data: 
     let base_url = admin_url.trim_end_matches('/');
     let full_url = format!("{}/api/comfyui/uploads/images", base_url);
 
-    let client = reqwest::Client::new();
+    let client = build_direct_client(Some(180))?;
 
     let part = reqwest::multipart::Part::bytes(file_data)
         .file_name(file_name)
