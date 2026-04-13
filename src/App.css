@@ -488,6 +488,9 @@ body { font-family: -apple-system, system-ui, sans-serif; height: 100vh; overflo
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface-primary) 92%, transparent), transparent),
     radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 10%, transparent), transparent 46%);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
 .workflow-browser-copy {
@@ -515,6 +518,44 @@ body { font-family: -apple-system, system-ui, sans-serif; height: 100vh; overflo
   font-size: 13px;
   line-height: 1.6;
   color: var(--text-dim);
+}
+
+.workflow-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-primary);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.workflow-refresh-btn:hover {
+  background: var(--surface-hover);
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: rotate(180deg);
+}
+
+.workflow-refresh-btn:active {
+  transform: rotate(180deg) scale(0.95);
+}
+
+.workflow-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.workflow-refresh-btn:disabled:hover {
+  background: var(--surface-primary);
+  color: var(--text-dim);
+  border-color: var(--border-soft);
+  transform: none;
 }
 
 .workflow-browser-scroller {
@@ -1080,7 +1121,12 @@ body { font-family: -apple-system, system-ui, sans-serif; height: 100vh; overflo
 
 /* 3.1 参数侧面板 (固定 320px) */
 .params-area {
-  width: 380px; border-right: 1px solid var(--border-soft); display: flex; flex-direction: column;
+  width: min(480px, 35vw);
+  min-width: 380px;
+  max-width: 520px;
+  border-right: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface-primary) 98%, transparent), color-mix(in srgb, var(--surface-secondary) 98%, transparent)),
     radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 7%, transparent), transparent 34%);

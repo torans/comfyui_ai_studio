@@ -21,6 +21,7 @@ import {
   Eye,
   EyeOff,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { useStore } from "./store";
 import { auth, generationJobs, workflowTemplates, comfyUiProxy, WorkflowTemplate, GenerationJob } from "./api";
@@ -199,23 +200,56 @@ export default function App() {
   useTheme();
   const store = useStore();
   const [activeTab, setActiveTab] = useState<Tab>("Workflow");
+  const [toastState, setToastState] = useState<{ title: string; message: string } | null>(null);
 
   // 初始化获取工作流
-  useEffect(() => {
-    if (store.isAuthenticated && store.token) {
-      const initData = async () => {
-        try {
-          const result = await workflowTemplates.list(store.serverUrl, store.token!);
-          store.setWorkflows(result.data);
-          
-          if (result.data.length > 0) {
-            if (!store.selectedWorkflowId) store.setSelectedWorkflowId(result.data[0].id);
-          }
-        } catch (err) { console.error("初始化失败:", err); }
-      };
-      initData();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const fetchWorkflows = useCallback(async (showToast = false) => {
+    if (!store.isAuthenticated || !store.token) return;
+    
+    setIsRefreshing(true);
+    try {
+      const result = await workflowTemplates.list(store.serverUrl, store.token!);
+      store.setWorkflows(result.data);
+      
+      if (result.data.length > 0) {
+        // 只在首次或当前选中的工作流不存在时设置默认选中
+        if (!store.selectedWorkflowId || !result.data.find(w => w.id === store.selectedWorkflowId)) {
+          store.setSelectedWorkflowId(result.data[0].id);
+        }
+      }
+      
+      if (showToast) {
+        setToastState({
+          title: "刷新成功",
+          message: `已获取最新工作流列表，共 ${result.data.length} 个可用工具`,
+        });
+      }
+    } catch (err) { 
+      console.error("获取工作流失败:", err);
+      if (showToast) {
+        setToastState({
+          title: "刷新失败",
+          message: "获取工作流列表失败，请稍后重试",
+        });
+      }
+    } finally {
+      setIsRefreshing(false);
     }
-  }, [store.isAuthenticated, store.token, store.selectedWorkflowId, store.serverUrl]);
+  }, [store.isAuthenticated, store.token, store.serverUrl, store.selectedWorkflowId]);
+
+  useEffect(() => {
+    fetchWorkflows();
+  }, [fetchWorkflows]);
+
+  // 定时自动刷新工作流（每 5 分钟）
+  useEffect(() => {
+    if (!store.isAuthenticated || !store.token) return;
+    
+    const timer = setInterval(fetchWorkflows, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [fetchWorkflows, store.isAuthenticated, store.token]);
 
   useEffect(() => {
     if (!store.isAuthenticated || !store.token || !store.user?.id) return;
@@ -253,6 +287,12 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {toastState ? (
+        <div className="app-toast" role="status" aria-live="polite">
+          <span className="app-toast-title">{toastState.title}</span>
+          <span className="app-toast-message">{toastState.message}</span>
+        </div>
+      ) : null}
       <div className="app-body">
         {activeTab === "Workflow" && (
           <aside className="workflow-browser" role="navigation" aria-label="工作流浏览">
@@ -261,6 +301,15 @@ export default function App() {
                 {/* <span className="workflow-browser-kicker">BEIKUMAN AI tools</span> */}
                 <h2>AI创作中心</h2>
               </div>
+              <button
+                className="workflow-refresh-btn"
+                onClick={() => fetchWorkflows(true)}
+                title="刷新工作流列表"
+                type="button"
+                disabled={isRefreshing}
+              >
+                <RefreshCw size={16} className={isRefreshing ? "spinning" : ""} />
+              </button>
             </div>
 
             <div className="workflow-browser-scroller">
