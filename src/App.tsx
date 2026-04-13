@@ -274,6 +274,13 @@ export default function App() {
      return () => clearInterval(timer);
   }, [store, store.token, store.serverUrl]);
 
+  // Toast 自动消失
+  useEffect(() => {
+    if (!toastState) return;
+    const timer = window.setTimeout(() => setToastState(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [toastState]);
+
   if (!store.isAuthenticated) return <div className="app-container"><LoginView /></div>;
 
   const workflowsByCategory = store.workflows.reduce((acc, w) => {
