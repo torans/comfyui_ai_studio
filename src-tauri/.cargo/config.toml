@@ -1,0 +1,2 @@
+[target.x86_64-pc-windows-msvc]
+linker = "/Users/jran/Developer/codes/2026/beikuman_ai_tools/src-tauri/.cargo/wrappers/clang-cl"

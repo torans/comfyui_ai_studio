@@ -1,0 +1,14 @@
+#!/bin/bash
+# Wrapper for clang++ that adds xwin SDK include paths for Windows cross-compilation
+
+XWIN_SDK="/Users/jran/Library/Caches/cargo-xwin/xwin/sdk"
+XWIN_CRT="/Users/jran/Library/Caches/cargo-xwin/xwin/crt"
+
+exec /usr/local/opt/llvm/bin/clang++ \
+  -I"${XWIN_SDK}/include/ucrt" \
+  -I"${XWIN_SDK}/include/shared" \
+  -I"${XWIN_SDK}/include/um" \
+  -I"${XWIN_SDK}/include/winrt" \
+  -I"${XWIN_SDK}/include/cpp" \
+  -I"${XWIN_CRT}/include" \
+  "$@"
